@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Plot from 'react-plotly.js';
@@ -45,7 +44,7 @@ function App() {
     setError("");
     try {
       const { data: tableData, error: tableError } = await supabase
-        .from('test_raman')
+        .from('test')
         .select('*');
       if (tableError) {
         setError(tableError.message);
@@ -63,6 +62,21 @@ function App() {
   };
 
   const selectedRow = data.find(row => String(row["S.No"]) === String(selectedSNo));
+
+  // Helper to convert various formats to array of numbers
+  const toNumArray = val => {
+    if (Array.isArray(val)) return val.map(Number);
+    if (typeof val === "string") {
+      try {
+        const arr = JSON.parse(val);
+        if (Array.isArray(arr)) return arr.map(Number);
+      } catch {
+        return val.split(',').map(Number).filter(v => !isNaN(v));
+      }
+    }
+    if (typeof val === "number") return [val];
+    return [];
+  };
 
   return (
     <div className="container">
@@ -101,37 +115,20 @@ function App() {
                 onChange={e => setSelectedSNo(e.target.value)}
               >
                 {data.map(row => (
-                  <option key={row["S.No"]} value={String(row["S.No"])}>{String(row["S.No"])} </option>
+                  <option key={row["S.No"]} value={String(row["S.No"])}>{String(row["S.No"])}</option>
                 ))}
               </select>
               {selectedRow ? (
                 <div className="curve-container">
                   <h3>Sample: {selectedRow["Sample name"]}</h3>
+
                   {(() => {
-                    // Robustly parse x and y as arrays
-                    let x = selectedRow["Raman Shift"];
-                    let y = selectedRow["Raman intensity"];
-                    // Helper to coerce to array of numbers
-                    const toNumArray = val => {
-                      if (Array.isArray(val)) return val.map(Number);
-                      if (typeof val === "string") {
-                        try {
-                          const arr = JSON.parse(val);
-                          if (Array.isArray(arr)) return arr.map(Number);
-                        } catch {
-                          return val.split(',').map(Number).filter(v => !isNaN(v));
-                        }
-                      }
-                      if (typeof val === "number") return [val];
-                      return [];
-                    };
-                    x = toNumArray(x);
-                    y = toNumArray(y);
-                    // Optionally add Shift x axis and Intensity y axis
-                    x = x.concat(toNumArray(selectedRow["Shift x axis"]));
-                    y = y.concat(toNumArray(selectedRow["Intensity y axis"]));
-                    // If no valid data, show empty chart and message
+                    // Only plot Shift x axis and Intensity y axis
+                    let x = toNumArray(selectedRow["Shift x axis"]);
+                    let y = toNumArray(selectedRow["Intensity y axis"]);
+
                     const hasData = x.length > 0 && y.length > 0;
+
                     return (
                       <>
                         <Plot
@@ -151,21 +148,44 @@ function App() {
                           }}
                           style={{ width: '100%', height: '400px' }}
                         />
-                        <div style={{marginTop: '0.5em', marginBottom: '1em'}}>
-                          <span style={{fontWeight: 'bold'}}>X Axis:</span> Shift<br/>
-                          <span style={{fontWeight: 'bold'}}>Y Axis:</span> Intensity
-                        </div>
-                        {!hasData && <p>No valid curve data for this S.No.</p>}
-                        <div style={{marginTop: '1em', background: '#f8f8f8', padding: '1em', borderRadius: '6px'}}>
+                        <div style={{
+                          marginTop: '1em',
+                          background: '#f8f8f8',
+                          padding: '1em',
+                          borderRadius: '6px'
+                        }}>
                           <strong>Raw Data for S.No {selectedSNo}:</strong>
-                          <table style={{width: '100%', borderCollapse: 'collapse'}}>
+                          <table style={{
+                            width: '100%',
+                            borderCollapse: 'collapse',
+                            marginTop: '0.5em'
+                          }}>
+                            <thead>
+                              <tr style={{ background: '#e0e0e0' }}>
+                                <th style={{ border: '1px solid #ccc', padding: '6px' }}>Column Name (Data Type)</th>
+                                <th style={{ border: '1px solid #ccc', padding: '6px' }}>Value</th>
+                              </tr>
+                            </thead>
                             <tbody>
-                              {Object.entries(selectedRow).map(([key, value]) => (
-                                <tr key={key}>
-                                  <td style={{border: '1px solid #ccc', padding: '4px', fontWeight: 'bold'}}>{key}</td>
-                                  <td style={{border: '1px solid #ccc', padding: '4px'}}>{Array.isArray(value) ? value.join(', ') : String(value)}</td>
-                                </tr>
-                              ))}
+                              {Object.entries(selectedRow).map(([key, value]) => {
+                                let dataType = typeof value;
+                                if (Array.isArray(value)) dataType = 'array';
+                                else if (value === null) dataType = 'null';
+                                else if (!isNaN(Number(value)) && value !== "") dataType = 'float8';
+                                else if (typeof value === 'string' && /^[0-9]+$/.test(value)) dataType = 'int8';
+                                else dataType = 'text';
+
+                                return (
+                                  <tr key={key}>
+                                    <td style={{ border: '1px solid #ccc', padding: '4px', fontWeight: 'bold' }}>
+                                      {key} ({dataType})
+                                    </td>
+                                    <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                                      {Array.isArray(value) ? value.join(', ') : String(value)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -205,4 +225,4 @@ function App() {
   );
 }
 
-export default App;
+export default App;
