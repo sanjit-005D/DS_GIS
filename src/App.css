@@ -1,42 +1,154 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+:root{
+  --bg1: linear-gradient(135deg,#0f172a 0%,#07102b 40%, #001219 100%);
+  --card: rgba(255,255,255,0.05);
+  --accent: #7c3aed; /* vibrant purple */
+  --accent-2: #06b6d4; /* cyan */
+  --muted: #9aa4b2;
+  --glass: rgba(255,255,255,0.04);
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+*{box-sizing:border-box}
+.container{
+  /* allow container to be wider so plot + table can expand to the right */
+  max-width:1600px;
+  margin:40px auto;
+  padding:28px;
+  border-radius:14px;
+  /* transparent container so body gradient shows across the whole viewport while scrolling */
+  background: transparent;
+  box-shadow: none;
+  border: 1px solid rgba(255,255,255,0.02);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+html, body, #root { height: 100%; }
+/* apply gradient to root to ensure it persists while scrolling */
+html{
+  background: radial-gradient(ellipse at top left, rgba(124,58,237,0.22) 0%, rgba(6,182,212,0.14) 18%, rgba(2,6,23,0.95) 65%),
+              linear-gradient(180deg,#07102b 0%, #001219 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+body{
+  margin:0;
+  font-family:'Poppins',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial;
+  /* full-page multi-stop gradient that stays fixed while scrolling */
+  background: transparent;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-attachment: fixed;
+  color: #e6eef8;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  min-height:100vh;
+  display:flex;
+  align-items:stretch;
+}
+.container-inner{
+  max-width:1100px;
+  margin:40px auto;
+  padding:28px;
+}
+h1{margin:0 0 14px 0;font-weight:700;color:linear-gradient(90deg,var(--accent),var(--accent-2));font-size:28px}
+
+.login-form{max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.login-form input{padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:#f8fbff}
+.login-form button{background:linear-gradient(90deg,var(--accent),var(--accent-2));border:none;color:white;padding:10px 14px;border-radius:10px;font-weight:600;cursor:pointer}
+.login-form button:disabled{opacity:.6;cursor:default}
+.error{color:#ff6b6b}
+
+.curve-container{margin-top:18px;padding:16px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 6px 28px rgba(2,6,23,0.6);}
+
+.app-header{display:flex;align-items:center;gap:16px;margin-bottom:8px}
+.brand-logo{width:110px;height:110px;object-fit:contain;border-radius:8px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 6px 18px rgba(2,6,23,0.5);} 
+.subtitle{color:var(--muted);font-size:13px;margin-top:4px}
+
+label{display:block;margin:8px 0 6px 0;color:var(--muted)}
+select{padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);color:#eef6ff}
+select option{color:#0b1220;background:transparent}
+
+/* default table styles are overridden for raw data card; keep neutral defaults */
+table{width:100%;margin-top:8px;border-collapse:collapse;color:var(--bg1)}
+thead tr{background:rgba(255,255,255,0.06)}
+td, th{padding:8px 10px;border:1px solid rgba(255,255,255,0.06);vertical-align:top;background:rgba(255,255,255,0.02);color:#e6eef8}
+td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
+
+.curve-container h3{margin:0 0 10px 0}
+
+/* small responsive tweaks */
+@media (max-width:700px){
+  .container-inner{padding:16px;margin:16px}
+  td:first-child{width:140px}
 }
 
-.card {
-  padding: 2em;
+/* Centered overlay for login */
+.login-overlay{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(2,6,23,0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index:60;
+  padding:24px;
+}
+.login-modal{background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));padding:28px;border-radius:16px;box-shadow:0 28px 100px rgba(2,6,23,0.85);min-width:360px;max-width:880px;width:100%;}
+.login-modal .login-header{display:flex;align-items:center;gap:18px;margin-bottom:14px}
+.login-form{background:transparent;padding:0;border-radius:0;box-shadow:none;min-width:0}
+.login-form h2{margin:6px 0 8px 0}
+
+/* enlarge logo when inside the modal */
+.login-modal .brand-logo{width:220px;height:220px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 12px 48px rgba(2,6,23,0.7);background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:6px}
+
+/* company name next to logo in modal */
+.company-name{margin-top:6px;color:var(--accent);font-weight:900;font-size:28px;letter-spacing:0.4px}
+
+/* small brand mark fixed at bottom-right */
+.corner-logo{position:fixed;right:14px;bottom:14px;width:40px;height:40px;object-fit:cover;border-radius:6px;box-shadow:0 6px 18px rgba(2,6,23,0.6);opacity:0.95;z-index:70}
+
+/* ensure select and table text are readable in dark bg */
+.container, .container-inner { color: #e6eef8 }
+.app-header h1{color:#eaf2ff}
+
+/* layout for main content: plot and raw table side-by-side */
+.visual-row{display:flex;gap:18px;align-items:flex-start;justify-content:space-between}
+.visual-row.centered{justify-content:center}
+.visual-row.visual-stack{flex-direction:column;align-items:center}
+.plot-area{flex:1 1 90%;min-width:720px;max-width:1600px;display:flex;justify-content:center}
+.plot-area.centered{display:flex;justify-content:center}
+.rawdata-area{width:100%;max-width:1600px;margin:18px 0 0 0;display:flex;justify-content:center}
+.rawdata-card.expanded{width:100%;box-shadow:0 12px 48px rgba(2,6,23,0.65);border-radius:10px;padding:28px;min-height:240px}
+.rawdata-card{background:rgba(255,255,255,0.03);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04)}
+.raw-table{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed}
+.raw-table td{word-break:break-word}
+.raw-table th{background:rgba(255,255,255,0.04);text-align:left;padding:8px;color:#e6eef8}
+.raw-table td{padding:6px;border-top:1px solid rgba(255,255,255,0.03);color:#e6eef8}
+.col-name{font-weight:600;color:#cfe6ff}
+.col-value{color:#eaf2ff}
+
+/* responsive tweaks */
+@media (max-width:980px){
+  .visual-row{flex-direction:column}
+  .rawdata-area{width:100%;flex:1}
 }
 
-.read-the-docs {
-  color: #888;
-}
+/* select and option high contrast */
+.sno-select{background:rgba(0,0,0,0.35);color:#eef6ff;border:1px solid rgba(255,255,255,0.12);padding:8px;border-radius:8px}
+.sno-select option{color:#061425}
+
+/* password toggle inside login form */
+.password-wrapper{position:relative;display:flex;align-items:center}
+.password-wrapper input{flex:1}
+.password-toggle{position:absolute;right:10px;background:transparent;border:none;padding:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.password-toggle svg{opacity:0.95}
+
+/* make plot area and rawdata-area responsive and allow expansion when stacked */
+.visual-row{align-items:flex-start}
+.plot-area{flex:1 1 60%}
+.rawdata-area{flex-basis:100%}
+
+/* increase table font-size for readability */
+.raw-table td, .raw-table th{font-size:14px}
+
