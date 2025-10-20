@@ -9,9 +9,10 @@
 
 *{box-sizing:border-box}
 .container{
-  /* allow container to be wider so plot + table can expand to the right */
-  max-width:1600px;
-  margin:40px auto;
+  /* allow container to expand wider to the right; use nearly full viewport width with side gutters */
+  max-width: none;
+  width: calc(100% - 48px);
+  margin:40px 24px;
   padding:28px;
   border-radius:14px;
   /* transparent container so body gradient shows across the whole viewport while scrolling */
@@ -60,7 +61,7 @@ h1{margin:0 0 14px 0;font-weight:700;color:linear-gradient(90deg,var(--accent),v
 .curve-container{margin-top:18px;padding:16px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 6px 28px rgba(2,6,23,0.6);}
 
 .app-header{display:flex;align-items:center;gap:16px;margin-bottom:8px}
-.brand-logo{width:110px;height:110px;object-fit:contain;border-radius:8px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 6px 18px rgba(2,6,23,0.5);} 
+.brand-logo{width:84px;height:84px;object-fit:contain;border-radius:8px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 6px 18px rgba(2,6,23,0.5);} 
 .subtitle{color:var(--muted);font-size:13px;margin-top:4px}
 
 label{display:block;margin:8px 0 6px 0;color:var(--muted)}
@@ -94,39 +95,50 @@ td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
   z-index:60;
   padding:24px;
 }
-.login-modal{background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));padding:28px;border-radius:16px;box-shadow:0 28px 100px rgba(2,6,23,0.85);min-width:360px;max-width:880px;width:100%;}
+.login-modal{background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));padding:18px;border-radius:12px;box-shadow:0 20px 60px rgba(2,6,23,0.85);min-width:320px;max-width:640px;width:100%;}
 .login-modal .login-header{display:flex;align-items:center;gap:18px;margin-bottom:14px}
 .login-form{background:transparent;padding:0;border-radius:0;box-shadow:none;min-width:0}
 .login-form h2{margin:6px 0 8px 0}
 
 /* enlarge logo when inside the modal */
-.login-modal .brand-logo{width:220px;height:220px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 12px 48px rgba(2,6,23,0.7);background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:6px}
+.login-modal .brand-logo{width:110px;height:110px;object-fit:cover;border-radius:12px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 10px 34px rgba(2,6,23,0.7);background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:6px}
 
 /* company name next to logo in modal */
 .company-name{margin-top:6px;color:var(--accent);font-weight:900;font-size:28px;letter-spacing:0.4px}
 
 /* small brand mark fixed at bottom-right */
-.corner-logo{position:fixed;right:14px;bottom:14px;width:40px;height:40px;object-fit:cover;border-radius:6px;box-shadow:0 6px 18px rgba(2,6,23,0.6);opacity:0.95;z-index:70}
+.corner-logo{position:fixed;right:14px;bottom:14px;width:32px;height:32px;object-fit:cover;border-radius:6px;box-shadow:0 6px 18px rgba(2,6,23,0.6);opacity:0.95;z-index:70}
 
 /* ensure select and table text are readable in dark bg */
 .container, .container-inner { color: #e6eef8 }
 .app-header h1{color:#eaf2ff}
 
 /* layout for main content: plot and raw table side-by-side */
-.visual-row{display:flex;gap:18px;align-items:flex-start;justify-content:space-between}
+.visual-row{display:flex;gap:1cm;align-items:stretch;justify-content:flex-start;flex-wrap:nowrap}
 .visual-row.centered{justify-content:center}
 .visual-row.visual-stack{flex-direction:column;align-items:center}
-.plot-area{flex:1 1 90%;min-width:720px;max-width:1600px;display:flex;justify-content:center}
+.plot-area{flex:1 1 70%;min-width:560px;max-width:none;display:flex;justify-content:flex-start}
 .plot-area.centered{display:flex;justify-content:center}
-.rawdata-area{width:100%;max-width:1600px;margin:18px 0 0 0;display:flex;justify-content:center}
-.rawdata-card.expanded{width:100%;box-shadow:0 12px 48px rgba(2,6,23,0.65);border-radius:10px;padding:28px;min-height:240px}
+.rawdata-area{flex:0 0 30%;min-width:300px;max-width:640px;margin:0;display:flex;align-items:flex-start}
+.rawdata-card.expanded{width:100%;box-shadow:0 12px 48px rgba(2,6,23,0.65);border-radius:10px;padding:18px;min-height:420px}
 .rawdata-card{background:rgba(255,255,255,0.03);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04)}
 .raw-table{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed}
 .raw-table td{word-break:break-word}
-.raw-table th{background:rgba(255,255,255,0.04);text-align:left;padding:8px;color:#e6eef8}
-.raw-table td{padding:6px;border-top:1px solid rgba(255,255,255,0.03);color:#e6eef8}
-.col-name{font-weight:600;color:#cfe6ff}
-.col-value{color:#eaf2ff}
+.raw-table th{background:rgba(255,255,255,0.04);text-align:left;padding:8px;color:#e6eef8;font-size:13px}
+.raw-table td{padding:6px;border-top:1px solid rgba(255,255,255,0.03);color:#e6eef8;font-size:13px}
+.raw-table th:nth-child(1){width:18%}
+.raw-table th:nth-child(2){width:14%}
+.raw-table th:nth-child(3){width:14%}
+.raw-table th:nth-child(4){width:24%}
+.raw-table th:nth-child(5){width:20%}
+.raw-table th:nth-child(6){width:10%}
+.col-value{color:#eaf2ff;word-break:break-word}
+
+/* horizontal scroll wrapper for large tables */
+.table-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:6px;-webkit-overflow-scrolling:touch}
+.table-scroll::-webkit-scrollbar{height:8px}
+.table-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:8px}
+.raw-table{min-width:980px}
 
 /* responsive tweaks */
 @media (max-width:980px){
@@ -142,13 +154,61 @@ td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
 .password-wrapper{position:relative;display:flex;align-items:center}
 .password-wrapper input{flex:1}
 .password-toggle{position:absolute;right:10px;background:transparent;border:none;padding:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
-.password-toggle svg{opacity:0.95}
+.password-toggle{position:absolute;right:10px;background:transparent;border:none;padding:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.password-toggle svg{opacity:0.95;width:16px;height:16px;color:#eaf2ff}
+.password-toggle{padding:4px}
+.password-toggle:focus{outline:2px solid rgba(124,58,237,0.25);border-radius:6px}
 
-/* make plot area and rawdata-area responsive and allow expansion when stacked */
 .visual-row{align-items:flex-start}
-.plot-area{flex:1 1 60%}
-.rawdata-area{flex-basis:100%}
+/* Final layout rules - ensure plot + table can expand to the right and do not get overridden later */
+/* plot-area: larger primary flex so the plot can grow; rawdata-area: fixed but wider to accommodate XY table */
+.plot-area{flex:1 1 auto;min-width:420px;max-width:none;display:flex;justify-content:flex-start}
+.plot-area.centered{display:flex;justify-content:center}
+.rawdata-area{flex:0 0 360px;min-width:280px;max-width:360px;margin:0;display:flex;align-items:flex-start;flex-direction:column;align-self:flex-start}
+.xy-card{margin-top:16px;margin-bottom:14px} /* nudged down very slightly */
+.meta-card{margin-bottom:0}
+
+/* when enough horizontal space, keep XY stacked (one above the other) but ensure rawdata-area remains a right column */
+@media (min-width:1300px){
+  .rawdata-area{flex-direction:column}
+  .rawdata-area .xy-card, .rawdata-area .meta-card{width:100%}
+}
+
+/* push the whole visual row to use available horizontal space and keep rawdata-area on the far right */
+.visual-row{width:100%;}
+
+/* XY table specific overrides: use sensible widths and allow wrapping for long numbers instead of forcing horizontal scroll */
+.xy-table{width:100%;table-layout:fixed;border-collapse:collapse}
+.xy-table th, .xy-table td{overflow:hidden;text-overflow:ellipsis;white-space:normal}
+.xy-table th:first-child, .xy-table td:first-child{width:20%} /* narrower Shift (X) column */
+.xy-table th:nth-child(2), .xy-table td:nth-child(2){width:80%} /* wider Intensity (Y) column */
+
+/* Main logged-in content: use full width and left-align so plot + table expand to the right */
+.content-wrapper{width:100%;max-width:1600px;margin:0 auto;display:block}
+.app-main{width:100%;display:flex;justify-content:flex-start}
+
+/* Move the below-plot table slightly down */
+.below-table{margin-top:22px}
+
+/* Ensure the XY table scroll wrapper aligns to top-left so content sits flush right of the plot */
+.rawdata-area{justify-content:flex-start}
+.xy-table-scroll{display:block;margin-top:6px} /* small offset so the XY card sits a tiny bit lower */
+
+/* Center the S.No controls and prevent overlap */
+.controls{display:flex;gap:12px;justify-content:center;align-items:center;margin:14px 0}
+.controls label{margin:0;color:#fff;font-weight:600}
+.controls select{min-width:160px;max-width:260px;padding:8px 10px;border-radius:8px}
+
+/* Center the sample title and curve container contents */
+.curve-container{display:flex;flex-direction:column;align-items:center}
+.curve-container h3{margin:0 0 12px 0;text-align:center;color:#fff}
+
+/* Reduce global raw-table min-width to avoid forcing overlap on narrow screens */
+.raw-table{min-width:480px}
 
 /* increase table font-size for readability */
 .raw-table td, .raw-table th{font-size:14px}
+
+/* small muted label for DB column types in headers */
+.col-type{font-size:11px;color:rgba(234,242,255,0.6);margin-left:6px;font-weight:600}
 

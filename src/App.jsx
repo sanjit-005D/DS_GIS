@@ -7,6 +7,8 @@ const supabaseUrl = "https://uieniviriyblquryluxx.supabase.co";
 const supabaseKey = "sb_publishable_-L-eQJsyRREQZBO7dnTMPw_e2Se9VcF";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const ARRAY_ROWS = 1024;
+
 function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -14,6 +16,7 @@ function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState([]);
+  const [columnTypes, setColumnTypes] = useState({}); // map of column name -> type (udt_name or data_type)
   const [selectedSNo, setSelectedSNo] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -53,6 +56,25 @@ function App() {
         return;
       }
       setData(tableData);
+      // attempt to fetch column types (udt_name gives postgres specific types like int8, float8, json)
+      try {
+        const { data: cols, error: colsErr } = await supabase
+          .from('information_schema.columns')
+          .select('column_name, data_type, udt_name')
+          .eq('table_name', 'test');
+        if (!colsErr && Array.isArray(cols)) {
+          const map = {};
+          cols.forEach(c => {
+            // prefer udt_name if present (gives int8, float8, jsonb etc.), else data_type
+            map[c.column_name] = c.udt_name || c.data_type || '';
+          });
+          setColumnTypes(map);
+        } else {
+          console.log('Could not fetch column metadata', colsErr);
+        }
+      } catch (err) {
+        console.log('Error fetching column metadata', err.message || err);
+      }
       if (tableData && tableData.length > 0) {
         setSelectedSNo(tableData[0]["S.No"]);
       }
@@ -62,7 +84,113 @@ function App() {
     setLoading(false);
   };
 
+  // Optional mapping from display labels to actual DB column names when they differ.
+  const colNameMap = {
+    'Shift x axis': 'shift_x_axis',
+    'Intensity y axis': 'intensity_y_axis',
+    'Sample name': 'sample_name',
+    'geo_tag': 'geo_tag',
+    'Shift (X)': 'shift_x_axis',
+    'Intensity (Y)': 'intensity_y_axis'
+  };
+
+  // If information_schema is unavailable, we can infer types from the first returned row.
+  const inferTypesFromSample = (sampleRow) => {
+    if (!sampleRow || typeof sampleRow !== 'object') return {};
+    const inferred = {};
+    Object.keys(sampleRow).forEach(k => {
+      const v = sampleRow[k];
+      if (v === null || v === undefined) {
+        inferred[k] = 'unknown';
+      } else if (Array.isArray(v)) {
+        inferred[k] = 'jsonb (inferred)';
+      } else if (typeof v === 'object') {
+        inferred[k] = 'jsonb (inferred)';
+      } else if (typeof v === 'number') {
+        // differentiate integer vs float
+        inferred[k] = Number.isInteger(v) ? 'int8 (inferred)' : 'float8 (inferred)';
+      } else if (typeof v === 'string') {
+        // check if it's a JSON array string
+        const t = v.trim();
+        if ((t.startsWith('[') && t.endsWith(']')) || (t.startsWith('{') && t.endsWith('}'))) {
+          inferred[k] = 'jsonb (inferred)';
+        } else {
+          inferred[k] = 'text (inferred)';
+        }
+      } else if (typeof v === 'boolean') {
+        inferred[k] = 'bool (inferred)';
+      } else {
+        inferred[k] = String(typeof v) + ' (inferred)';
+      }
+    });
+    return inferred;
+  };
+
+  // Resolve a sensible column type label for a displayed column name.
+  const resolveColType = (colLabel, fallback) => {
+    if (!colLabel) return fallback || '';
+    // 1) direct match in fetched columnTypes
+    if (columnTypes && columnTypes[colLabel]) return columnTypes[colLabel];
+    // 2) try common transformations against columnTypes keys
+    const lower = colLabel.toLowerCase();
+    for (const k of Object.keys(columnTypes || {})) {
+      if (k.toLowerCase() === lower) return columnTypes[k];
+      if (k.toLowerCase().replace(/_/g, ' ') === lower) return columnTypes[k];
+      if (k.toLowerCase() === lower.replace(/ /g, '_')) return columnTypes[k];
+    }
+    // 3) try explicit mapping from display label to DB column name
+    const mapped = colNameMap[colLabel] || colNameMap[colLabel.trim()];
+    if (mapped && columnTypes && columnTypes[mapped]) return columnTypes[mapped];
+    // 4) try a lowercase/underscore variant of mapping
+    if (mapped) {
+      const mLower = mapped.toLowerCase();
+      for (const k of Object.keys(columnTypes || {})) {
+        if (k.toLowerCase() === mLower) return columnTypes[k];
+      }
+    }
+    // 5) lastly, infer from first data row if available
+    if (data && data.length > 0) {
+      const inferred = inferTypesFromSample(data[0]);
+      // try display label direct match
+      if (inferred[colLabel]) return inferred[colLabel];
+      // try mapped name
+      if (mapped && inferred[mapped]) return inferred[mapped];
+      // try lowercase/underscore variants
+      for (const k of Object.keys(inferred)) {
+        if (k.toLowerCase() === lower) return inferred[k];
+        if (k.toLowerCase().replace(/_/g, ' ') === lower) return inferred[k];
+        if (k.toLowerCase() === lower.replace(/ /g, '_')) return inferred[k];
+      }
+    }
+    return fallback || '';
+  };
+
   const selectedRow = data.find(row => String(row["S.No"]) === String(selectedSNo));
+
+  // derive numeric arrays for XY table (safe parsing)
+  const toNumArrayLocal = val => {
+    if (!val && val !== 0) return [];
+    if (Array.isArray(val)) return val.map(v => Number(v)).filter(n => !Number.isNaN(n));
+    if (typeof val === 'number') return [val];
+    if (typeof val === 'string') {
+      // try JSON.parse first (handles strings like "[1,2,3]")
+      try {
+        const parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) return parsed.map(v => Number(v)).filter(n => !Number.isNaN(n));
+      } catch (e) {
+        // fall through to regex extraction
+      }
+      // extract numeric tokens (handles brackets, whitespace, commas, etc.)
+      const matches = val.match(/-?\d+\.?\d*(?:e[+-]?\d+)?/ig);
+      if (matches) return matches.map(Number).filter(n => !Number.isNaN(n));
+      // last-resort split
+      return val.replace(/^\[|\]$/g, '').split(/[,\s]+/).filter(Boolean).map(Number).filter(n => !Number.isNaN(n));
+    }
+    return [];
+  };
+
+  const xArr = toNumArrayLocal(selectedRow?.['Shift x axis']);
+  const yArr = toNumArrayLocal(selectedRow?.['Intensity y axis']);
 
   // Helper to convert various formats to array of numbers
   const toNumArray = val => {
@@ -79,6 +207,49 @@ function App() {
     return [];
   };
 
+  // Format values for the below-plot single-row table: if an array has one item show that item
+  const formatBelowValue = (val) => {
+    if (val === undefined || val === null) return '';
+    if (Array.isArray(val)) {
+      if (val.length === 1) return String(val[0]);
+      return val.join(', ');
+    }
+    if (typeof val === 'string') {
+      const t = val.trim();
+      // try to parse JSON arrays
+      if (t.startsWith('[') && t.endsWith(']')) {
+        try {
+          const p = JSON.parse(t);
+          if (Array.isArray(p)) return p.length === 1 ? String(p[0]) : p.join(', ');
+        } catch (e) {
+          // fallthrough
+        }
+      }
+      // comma-separated string
+      if (t.includes(',')) {
+        const parts = t.split(',').map(s => s.trim()).filter(Boolean);
+        return parts.length === 1 ? parts[0] : parts.join(', ');
+      }
+      return t;
+    }
+    return String(val);
+  };
+
+  // Compute peak (max y) and corresponding x value
+  const computePeak = (xA, yA) => {
+    if (!Array.isArray(yA) || yA.length === 0) return { x: '', y: '' };
+    // find index of maximum numeric y
+    let maxIdx = 0;
+    for (let i = 1; i < yA.length; i++) {
+      const a = Number(yA[i]);
+      const b = Number(yA[maxIdx]);
+      if (!Number.isNaN(a) && (Number.isNaN(b) || a > b)) maxIdx = i;
+    }
+    const yVal = yA[maxIdx];
+    const xVal = Array.isArray(xA) && xA.length > maxIdx ? xA[maxIdx] : (xA && xA.length === 1 ? xA[0] : '');
+    return { x: xVal, y: yVal };
+  };
+
   return (
     <div className="container">
       {/* When not logged in, show overlay with login form and the logo/title inside the modal */}
@@ -86,10 +257,8 @@ function App() {
         <div className="login-overlay">
           <div className="login-modal">
             <div className="login-header">
-              {/* use the newly added public asset logo_log.jpg for login modal */}
               <img src="/logo_log.jpg" alt="Company logo" className="brand-logo" />
               <div>
-                {/* company name should come first as requested */}
                 <div className="company-name">Deep Spectrum</div>
                 <h1>Spectroscopic Data Viewer</h1>
                 <div className="subtitle">Interactive spectra viewer</div>
@@ -119,9 +288,18 @@ function App() {
                   onClick={() => setShowPassword(s => !s)}
                 >
                   {showPassword ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 3l18 18" stroke="#e6eef8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M10.58 10.58a3 3 0 0 0 4.24 4.24" stroke="#e6eef8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M9.88 5.88C11.26 5.35 12.61 5 14 5c4 0 7.27 2.55 9 7-1.04 2.36-2.84 4.25-4.94 5.41M4.22 4.22C2.98 6.14 2 8.44 2 12c1.73 4.45 5 7 9 7 1.28 0 2.53-.2 3.67-.6" stroke="#e6eef8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    /* eye-off icon */
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-5.05 0-9.27-3.11-11-7 1.05-2.25 2.89-4.06 5.09-5.06" />
+                      <path d="M1 1l22 22" />
+                      <path d="M9.53 9.53A3.5 3.5 0 0 0 12 15a3.5 3.5 0 0 0 3.47-2.47" />
+                    </svg>
                   ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke="#e6eef8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="12" r="3" stroke="#e6eef8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    /* eye icon */
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
                   )}
                 </button>
               </div>
@@ -131,7 +309,7 @@ function App() {
           </div>
         </div>
       ) : (
-          <div className="app-content">
+        <div className="app-content">
           <div className="app-header">
             <img src="/logo_log.jpg" alt="Company logo" className="brand-logo" />
             <div>
@@ -159,8 +337,7 @@ function App() {
                 ))}
               </select>
 
-              {/* stacked layout: plot centered with raw data below */}
-              <div className="visual-row visual-stack">
+              <div className="visual-row">
                 <div className="plot-area centered">
                   {selectedRow ? (
                     <div className="curve-container">
@@ -177,12 +354,10 @@ function App() {
                                 y: hasData ? y : [0],
                                 type: 'scatter',
                                 mode: 'lines+markers',
-                                marker: { color: '#caa6ff' },
-                                line: { color: '#caa6ff', width: 3 },
                                 marker: { color: '#caa6ff', size: 5 },
+                                line: { color: '#caa6ff', width: 3 },
                                 name: 'Spectra',
                               },
-                              // glow layer: wider semi-transparent line without markers
                               {
                                 x: hasData ? x : [0],
                                 y: hasData ? y : [0],
@@ -198,82 +373,94 @@ function App() {
                               plot_bgcolor: 'rgba(0,0,0,0)',
                               paper_bgcolor: 'rgba(0,0,0,0)',
                               font: { family: 'Poppins, Arial, sans-serif', size: 15, color: '#ffffff' },
-                              xaxis: {
-                                title: { text: 'Shift (X Axis)', font: { family: 'Poppins, Arial, sans-serif', size: 15, color: '#ffffff' } },
-                                tickfont: { family: 'Poppins, Arial, sans-serif', size: 15, color: '#ffffff' },
-                                automargin: true,
-                                color: '#ffffff',
-                                gridcolor: 'rgba(255,255,255,0.06)',
-                                zerolinecolor: 'rgba(255,255,255,0.06)'
-                              },
-                              yaxis: {
-                                title: { text: 'Intensity (Y Axis)', font: { family: 'Poppins, Arial, sans-serif', size: 15, color: '#ffffff' } },
-                                tickfont: { family: 'Poppins, Arial, sans-serif', size: 15, color: '#ffffff' },
-                                automargin: true,
-                                color: '#ffffff',
-                                gridcolor: 'rgba(255,255,255,0.06)',
-                                zerolinecolor: 'rgba(255,255,255,0.06)'
-                              },
-                              legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: -0.12, font: { color: '#ffffff' } },
+                              xaxis: { title: { text: 'Shift (X Axis)', font: { size: 15, color: '#ffffff' } }, tickfont: { size: 15, color: '#ffffff' }, automargin: true, color: '#ffffff', gridcolor: 'rgba(255,255,255,0.06)' },
+                              yaxis: { title: { text: 'Intensity (Y Axis)', font: { size: 15, color: '#ffffff' } }, tickfont: { size: 15, color: '#ffffff' }, automargin: true, color: '#ffffff', gridcolor: 'rgba(255,255,255,0.06)' },
+                              legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: -0.18, font: { color: '#ffffff' } },
+                              margin: { b: 48 }, // add space at bottom (~1cm)
                               autosize: true,
                             }}
-                            style={{ width: '1200px', maxWidth: '100%', height: '680px' }}
+                            style={{ width: '960px', maxWidth: '100%', height: '560px' }}
                           />
                         );
                       })()}
                     </div>
                   ) : (
                     <div className="curve-container">
-                        <Plot
+                      <Plot
                         data={[
                           { x: [0], y: [0], type: 'scatter', mode: 'lines+markers', marker: { color: '#caa6ff', size: 5 }, line: { color: '#caa6ff', width: 3 } },
                           { x: [0], y: [0], type: 'scatter', mode: 'lines', line: { color: '#caa6ff', width: 6, opacity: 0.06 }, hoverinfo: 'skip', showlegend: false }
                         ]}
-                          layout={{
-                            title: 'Spectroscopic Curve',
-                            plot_bgcolor: '#05060a',
-                            paper_bgcolor: 'rgba(0,0,0,0)',
-                            font: { family: 'Poppins, Arial, sans-serif', size: 13, color: '#ffffff' },
-                            xaxis: { title: { text: 'Shift', font: { family: 'Poppins, Arial, sans-serif', size: 15, color: '#ffffff' } }, tickfont: { family: 'Poppins, Arial, sans-serif', size: 14, color: '#ffffff' }, automargin: true, color: '#ffffff', gridcolor: 'rgba(255,255,255,0.06)', zerolinecolor: 'rgba(255,255,255,0.06)' },
-                            yaxis: { title: { text: 'Intensity', font: { family: 'Poppins, Arial, sans-serif', size: 15, color: '#ffffff' } }, tickfont: { family: 'Poppins, Arial, sans-serif', size: 14, color: '#ffffff' }, automargin: true, color: '#ffffff', gridcolor: 'rgba(255,255,255,0.06)', zerolinecolor: 'rgba(255,255,255,0.06)' },
-                            legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: -0.12, font: { color: '#ffffff' } },
-                            autosize: true
-                          }}
-                        style={{ width: '1200px', maxWidth: '100%', height: '680px' }}
+                        layout={{
+                          title: 'Spectroscopic Curve',
+                          plot_bgcolor: '#05060a',
+                          paper_bgcolor: 'rgba(0,0,0,0)',
+                          font: { family: 'Poppins, Arial, sans-serif', size: 13, color: '#ffffff' },
+                          xaxis: { title: { text: 'Shift', font: { size: 15, color: '#ffffff' } }, tickfont: { size: 14, color: '#ffffff' }, automargin: true, color: '#ffffff', gridcolor: 'rgba(255,255,255,0.06)' },
+                          yaxis: { title: { text: 'Intensity', font: { size: 15, color: '#ffffff' } }, tickfont: { size: 14, color: '#ffffff' }, automargin: true, color: '#ffffff', gridcolor: 'rgba(255,255,255,0.06)' },
+                          legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: -0.18, font: { color: '#ffffff' } },
+                          margin: { b: 48 }, // add space at bottom (~1cm)
+                          autosize: true
+                        }}
+                        style={{ width: '960px', maxWidth: '100%', height: '600px' }}
                       />
                     </div>
                   )}
                 </div>
 
                 <div className="rawdata-area">
-                  <div className="rawdata-card expanded">
-                    <strong>Raw Data for S.No {selectedSNo}:</strong>
-                    <table className="raw-table">
-                      <thead>
-                        <tr>
-                          <th>Column Name (Data Type)</th>
-                          <th>Value</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedRow && Object.entries(selectedRow).map(([key, value]) => {
-                          let dataType = typeof value;
-                          if (Array.isArray(value)) dataType = 'array';
-                          else if (value === null) dataType = 'null';
-                          else if (!isNaN(Number(value)) && value !== "") dataType = 'float8';
-                          else if (typeof value === 'string' && /^[0-9]+$/.test(value)) dataType = 'int8';
-                          else dataType = 'text';
-
-                          return (
-                            <tr key={key}>
-                              <td className="col-name">{key} ({dataType})</td>
-                              <td className="col-value">{Array.isArray(value) ? value.join(', ') : String(value)}</td>
+                  <div className="xy-card rawdata-card">
+                    <div className="xy-table-scroll" style={{ maxHeight: 590, overflowY: 'auto', overflowX: 'hidden', marginTop: 18 }}>
+                      <table className="raw-table xy-table">
+                        <thead>
+                          <tr>
+                            <th>Shift (X) <span className="col-type">{'{' + resolveColType('Shift x axis', 'number') + '}'}</span></th>
+                            <th>Intensity (Y) <span className="col-type">{'{' + resolveColType('Intensity y axis', 'number') + '}'}</span></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: ARRAY_ROWS }).map((_, i) => (
+                            <tr key={i}>
+                              <td className="col-value">{xArr[i] ?? ''}</td>
+                              <td className="col-value">{yArr[i] ?? ''}</td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
+                </div>
+
+              </div>
+
+              {/* Below the visual-row: single-row 4-column table with Sample name, Raman shift, Raman intensity and geo_tag for the selected S.No */}
+              <div className="below-table">
+                <div className="rawdata-card below-card">
+                  <table className="raw-table below-raw-table">
+                    <thead>
+                      <tr>
+                        <th>Sample name <span className="col-type">{'{' + resolveColType('Sample name', 'text') + '}'}</span></th>
+                        <th>Raman shift <span className="col-type">{'{' + resolveColType('Shift x axis', 'number') + '}'}</span></th>
+                        <th>Raman intensity <span className="col-type">{'{' + resolveColType('Intensity y axis', 'number') + '}'}</span></th>
+                        <th>geo_tag <span className="col-type">{'{' + resolveColType('geo_tag', 'text') + '}'}</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="col-value">{selectedRow?.['Sample name'] ?? ''}</td>
+                        {(() => {
+                          const peak = computePeak(xArr, yArr);
+                          return (
+                            <>
+                              <td className="col-value">{peak.x !== '' ? String(peak.x) : ''}</td>
+                              <td className="col-value">{peak.y !== '' ? String(peak.y) : ''}</td>
+                            </>
+                          );
+                        })()}
+                        <td className="col-value">{selectedRow?.['geo_tag'] ?? ''}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </>
@@ -282,10 +469,10 @@ function App() {
           )}
         </div>
       )}
-  {/* small corner logo fixed to bottom-right */}
-  <img src="/logo_log.jpg" alt="logo" className="corner-logo" />
+      {/* small corner logo fixed to bottom-right */}
+      <img src="/logo_log.jpg" alt="logo" className="corner-logo" />
     </div>
   );
 }
 
-export default App;
+export default App;
