@@ -250,6 +250,19 @@ function App() {
     return { x: xVal, y: yVal };
   };
 
+  // format helpers
+  const formatX = (v) => {
+    const n = Number(v);
+    if (Number.isNaN(n) || v === '' || v === null || v === undefined) return '';
+    return n.toFixed(2);
+  };
+
+  const formatY = (v) => {
+    const n = Number(v);
+    if (Number.isNaN(n) || v === '' || v === null || v === undefined) return '';
+    return n.toFixed(6);
+  };
+
   return (
     <div className="container">
       {/* When not logged in, show overlay with login form and the logo/title inside the modal */}
@@ -379,7 +392,7 @@ function App() {
                               margin: { b: 48 }, // add space at bottom (~1cm)
                               autosize: true,
                             }}
-                            style={{ width: '960px', maxWidth: '100%', height: '560px' }}
+                            style={{ width: '820px', maxWidth: '100%', height: '480px' }}
                           />
                         );
                       })()}
@@ -402,7 +415,7 @@ function App() {
                           margin: { b: 48 }, // add space at bottom (~1cm)
                           autosize: true
                         }}
-                        style={{ width: '960px', maxWidth: '100%', height: '600px' }}
+                        style={{ width: '820px', maxWidth: '100%', height: '520px' }}
                       />
                     </div>
                   )}
@@ -410,7 +423,7 @@ function App() {
 
                 <div className="rawdata-area">
                   <div className="xy-card rawdata-card">
-                    <div className="xy-table-scroll" style={{ maxHeight: 590, overflowY: 'auto', overflowX: 'hidden', marginTop: 18 }}>
+                    <div className="xy-table-scroll" style={{ maxHeight: 520, overflowY: 'auto', overflowX: 'hidden', marginTop: 18 }}>
                       <table className="raw-table xy-table">
                         <thead>
                           <tr>
@@ -421,8 +434,8 @@ function App() {
                         <tbody>
                           {Array.from({ length: ARRAY_ROWS }).map((_, i) => (
                             <tr key={i}>
-                              <td className="col-value">{xArr[i] ?? ''}</td>
-                              <td className="col-value">{yArr[i] ?? ''}</td>
+                              <td className="col-value">{xArr[i] !== undefined && xArr[i] !== null && xArr[i] !== '' ? formatX(xArr[i]) : ''}</td>
+                              <td className="col-value">{yArr[i] !== undefined && yArr[i] !== null && yArr[i] !== '' ? formatY(yArr[i]) : ''}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -452,8 +465,8 @@ function App() {
                           const peak = computePeak(xArr, yArr);
                           return (
                             <>
-                              <td className="col-value">{peak.x !== '' ? String(peak.x) : ''}</td>
-                              <td className="col-value">{peak.y !== '' ? String(peak.y) : ''}</td>
+                              <td className="col-value">{peak.x !== '' ? formatX(peak.x) : ''}</td>
+                              <td className="col-value">{peak.y !== '' ? formatY(peak.y) : ''}</td>
                             </>
                           );
                         })()}

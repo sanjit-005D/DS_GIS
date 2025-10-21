@@ -146,6 +146,32 @@ td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
   .rawdata-area{width:100%;flex:1}
 }
 
+/* Mobile-specific fixes: ensure plot and tables stack and do not force layout overflow */
+@media (max-width:700px){
+  .visual-row{flex-direction:column;gap:12px;align-items:stretch}
+  /* allow plot to shrink on small screens */
+  .plot-area{min-width:0;width:100%}
+  .plot-area.centered{justify-content:center}
+  .curve-container{width:100%;padding:8px}
+
+  /* rawdata/right column becomes full width below the plot */
+  .rawdata-area{flex:none;width:100%;min-width:0;max-width:none;margin-top:8px}
+
+  /* tables should adapt on small screens rather than forcing a min-width */
+  .raw-table{min-width:0;table-layout:auto}
+  .xy-table{display:table;width:100%;table-layout:auto}
+  .xy-table th, .xy-table td{white-space:normal;word-break:break-word}
+  .xy-table th:first-child, .xy-table td:first-child{width:40%}
+  .xy-table th:nth-child(2), .xy-table td:nth-child(2){width:60%}
+
+  /* make the scroll wrapper allow horizontal scrolling if needed, but not force layout */
+  .xy-table-scroll{max-width:100%;overflow-x:auto}
+
+  /* reduce large gaps/paddings for mobile */
+  .container{margin:12px;padding:12px}
+  .login-modal{padding:14px}
+}
+
 /* select and option high contrast */
 .sno-select{background:rgba(0,0,0,0.35);color:#eef6ff;border:1px solid rgba(255,255,255,0.12);padding:8px;border-radius:8px}
 .sno-select option{color:#061425}
@@ -162,9 +188,9 @@ td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
 .visual-row{align-items:flex-start}
 /* Final layout rules - ensure plot + table can expand to the right and do not get overridden later */
 /* plot-area: larger primary flex so the plot can grow; rawdata-area: fixed but wider to accommodate XY table */
-.plot-area{flex:1 1 auto;min-width:420px;max-width:none;display:flex;justify-content:flex-start}
+.plot-area{flex:1 1 auto;min-width:320px;max-width:none;display:flex;justify-content:flex-start}
 .plot-area.centered{display:flex;justify-content:center}
-.rawdata-area{flex:0 0 360px;min-width:280px;max-width:360px;margin:0;display:flex;align-items:flex-start;flex-direction:column;align-self:flex-start}
+.rawdata-area{flex:0 0 300px;min-width:240px;max-width:300px;margin:0;display:flex;align-items:flex-start;flex-direction:column;align-self:flex-start}
 .xy-card{margin-top:16px;margin-bottom:14px} /* nudged down very slightly */
 .meta-card{margin-bottom:0}
 
@@ -180,8 +206,8 @@ td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
 /* XY table specific overrides: use sensible widths and allow wrapping for long numbers instead of forcing horizontal scroll */
 .xy-table{width:100%;table-layout:fixed;border-collapse:collapse}
 .xy-table th, .xy-table td{overflow:hidden;text-overflow:ellipsis;white-space:normal}
-.xy-table th:first-child, .xy-table td:first-child{width:20%} /* narrower Shift (X) column */
-.xy-table th:nth-child(2), .xy-table td:nth-child(2){width:80%} /* wider Intensity (Y) column */
+.xy-table th:first-child, .xy-table td:first-child{width:30%} /* Shift (X) column */
+.xy-table th:nth-child(2), .xy-table td:nth-child(2){width:70%} /* Intensity (Y) column */
 
 /* Main logged-in content: use full width and left-align so plot + table expand to the right */
 .content-wrapper{width:100%;max-width:1600px;margin:0 auto;display:block}
@@ -204,7 +230,7 @@ td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
 .curve-container h3{margin:0 0 12px 0;text-align:center;color:#fff}
 
 /* Reduce global raw-table min-width to avoid forcing overlap on narrow screens */
-.raw-table{min-width:480px}
+.raw-table{min-width:420px}
 
 /* increase table font-size for readability */
 .raw-table td, .raw-table th{font-size:14px}
