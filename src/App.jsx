@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabaseClient'
 import Plot from 'react-plotly.js';
 import './App.css';
+import GlobeModal from './GlobeModal'
 
-const supabaseUrl = "https://uieniviriyblquryluxx.supabase.co";
-const supabaseKey = "sb_publishable_-L-eQJsyRREQZBO7dnTMPw_e2Se9VcF";
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 const ARRAY_ROWS = 1024;
 
@@ -19,6 +17,7 @@ function App() {
   const [columnTypes, setColumnTypes] = useState({}); // map of column name -> type (udt_name or data_type)
   const [selectedSNo, setSelectedSNo] = useState("");
   const [loading, setLoading] = useState(false);
+  const [globeOpen, setGlobeOpen] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -30,7 +29,9 @@ function App() {
         password,
       });
       if (loginError) {
-        setError(loginError.message);
+        console.error('Supabase login error object:', loginError);
+        try { console.error('Supabase login error (string):', JSON.stringify(loginError)) } catch (e) {}
+        setError(loginError.message || 'Login failed')
         setLoading(false);
         return;
       }
@@ -38,7 +39,9 @@ function App() {
       // Fetch data after login
       fetchData();
     } catch (err) {
-      setError("Login failed. " + err.message);
+      console.error('Exception during login:', err);
+      try { console.error(JSON.stringify(err)) } catch (e) {}
+      setError("Login failed. " + (err && err.message ? err.message : String(err)));
     }
     setLoading(false);
   };
@@ -56,24 +59,14 @@ function App() {
         return;
       }
       setData(tableData);
-      // attempt to fetch column types (udt_name gives postgres specific types like int8, float8, json)
+      // infer column types from the first row (safer than querying information_schema via the public REST API)
       try {
-        const { data: cols, error: colsErr } = await supabase
-          .from('information_schema.columns')
-          .select('column_name, data_type, udt_name')
-          .eq('table_name', 'test');
-        if (!colsErr && Array.isArray(cols)) {
-          const map = {};
-          cols.forEach(c => {
-            // prefer udt_name if present (gives int8, float8, jsonb etc.), else data_type
-            map[c.column_name] = c.udt_name || c.data_type || '';
-          });
-          setColumnTypes(map);
-        } else {
-          console.log('Could not fetch column metadata', colsErr);
+        if (tableData && tableData.length > 0) {
+          const inferred = inferTypesFromSample(tableData[0]);
+          setColumnTypes(inferred);
         }
       } catch (err) {
-        console.log('Error fetching column metadata', err.message || err);
+        console.log('Error inferring column metadata', err.message || err);
       }
       if (tableData && tableData.length > 0) {
         setSelectedSNo(tableData[0]["S.No"]);
@@ -323,6 +316,8 @@ function App() {
         </div>
       ) : (
         <div className="app-content">
+          {/* GIS mark fixed top-right for logged-in view */}
+          <img src="/GIS.png" alt="GIS" className="top-gis" onClick={() => setGlobeOpen(true)} />
           <div className="app-header">
             <img src="/logo_log.jpg" alt="Company logo" className="brand-logo" />
             <div>
@@ -330,6 +325,7 @@ function App() {
               <h1>Spectroscopic Data Viewer</h1>
               <div className="subtitle">Interactive spectra viewer</div>
             </div>
+            <GlobeModal open={globeOpen} onClose={() => setGlobeOpen(false)} />
           </div>
 
           <h2>Data Table: test_raman</h2>

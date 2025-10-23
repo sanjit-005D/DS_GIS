@@ -8,6 +8,8 @@
 }
 
 *{box-sizing:border-box}
+.no-select{ -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+.selectable{ -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; }
 .container{
   /* allow container to expand wider to the right; use nearly full viewport width with side gutters */
   max-width: none;
@@ -108,6 +110,10 @@ td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
 
 /* small brand mark fixed at bottom-right */
 .corner-logo{position:fixed;right:14px;bottom:14px;width:32px;height:32px;object-fit:cover;border-radius:6px;box-shadow:0 6px 18px rgba(2,6,23,0.6);opacity:0.95;z-index:70}
+
+/* GIS badge shown after login in the top-right */
+.top-gis{position:fixed;right:18px;top:18px;width:120px;height:120px;object-fit:contain;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,0.6);z-index:90}
+@media (max-width:480px){.top-gis{width:84px;height:84px;right:12px;top:12px}}
 
 /* ensure select and table text are readable in dark bg */
 .container, .container-inner { color: #e6eef8 }
@@ -237,4 +243,21 @@ td:first-child, th:first-child{width:220px;color:#eaf2ff;font-weight:600}
 
 /* small muted label for DB column types in headers */
 .col-type{font-size:11px;color:rgba(234,242,255,0.6);margin-left:6px;font-weight:600}
+
+
+/* Globe modal styles */
+.globe-modal-overlay{position:fixed;inset:0;background:rgba(2,6,23,0.7);z-index:200;display:flex;align-items:center;justify-content:center}
+.globe-modal{position:relative;width:90vw;max-width:1200px;height:80vh;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;box-shadow:0 30px 90px rgba(2,6,23,0.85);overflow:hidden}
+.globe-close{position:absolute;right:12px;top:12px;z-index:210;background:rgba(0,0,0,0.5);border:none;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer}
+.globe-map{width:100%;height:100%;background:#07102b}
+
+/* DOM marker labels for map samples */
+.sample-label{background:rgba(0,0,0,0.6);color:#fff;padding:4px 8px;border-radius:6px;font-size:12px;box-shadow:0 6px 18px rgba(0,0,0,0.6);white-space:nowrap}
+
+/* popup content styling for maplibre popups */
+.popup-content{font-family:'Poppins', Arial, sans-serif;color:#fff}
+.popup-title{font-weight:700;margin-bottom:6px}
+.popup-coords{font-size:12px;color:rgba(234,242,255,0.9)}
+
+
 
