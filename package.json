@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+  "serve:preview": "node scripts/preview-server.cjs",
+  "check:headers": "node scripts/check-headers.cjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -14,6 +16,8 @@
     "plotly.js": "^3.1.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+  "three": "*",
+  "three-globe": "*",
     "react-plotly.js": "^2.6.0"
   },
   "devDependencies": {

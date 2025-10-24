@@ -276,6 +276,8 @@ function App() {
                 type="email"
                 placeholder="Email"
                 value={email}
+                id="login-email"
+                name="email"
                 onChange={e => setEmail(e.target.value)}
                 required
               />
@@ -284,6 +286,8 @@ function App() {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Password"
                   value={password}
+                  id="login-password"
+                  name="password"
                   onChange={e => setPassword(e.target.value)}
                   required
                 />
@@ -316,8 +320,6 @@ function App() {
         </div>
       ) : (
         <div className="app-content">
-          {/* GIS mark fixed top-right for logged-in view */}
-          <img src="/GIS.png" alt="GIS" className="top-gis" onClick={() => setGlobeOpen(true)} />
           <div className="app-header">
             <img src="/logo_log.jpg" alt="Company logo" className="brand-logo" />
             <div>
@@ -325,7 +327,8 @@ function App() {
               <h1>Spectroscopic Data Viewer</h1>
               <div className="subtitle">Interactive spectra viewer</div>
             </div>
-            <GlobeModal open={globeOpen} onClose={() => setGlobeOpen(false)} />
+            <img src="/GIS.png" alt="GIS" className="header-gis" onClick={() => setGlobeOpen(true)} />
+            <GlobeModal open={globeOpen} onClose={() => setGlobeOpen(false)} selectedSNo={selectedSNo} />
           </div>
 
           <h2>Data Table: test_raman</h2>
