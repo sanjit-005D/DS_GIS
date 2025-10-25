@@ -16,6 +16,25 @@ export default defineConfig({
   optimizeDeps: {
     include: ['three', 'three-globe']
   },
+  build: {
+    // Increase warning threshold to avoid false positives for our large vendor chunks
+    chunkSizeWarningLimit: 600, // in KB (default 500)
+    rollupOptions: {
+      output: {
+        // Split large libraries into named chunks so they don't end up in the main bundle.
+        manualChunks(id) {
+          if (!id) return
+          if (id.includes('node_modules')) {
+            if (id.includes('three') || id.includes('three-globe')) return 'vendor_three'
+            if (id.includes('plotly.js') || id.includes('react-plotly.js')) return 'vendor_plotly'
+            if (id.includes('react') || id.includes('react-dom')) return 'vendor_react'
+            if (id.includes('@supabase')) return 'vendor_supabase'
+            return 'vendor_misc'
+          }
+        }
+      }
+    }
+  },
   server: {
     // development server response headers to help surface header-related issues locally
     headers: {

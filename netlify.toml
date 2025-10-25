@@ -1,0 +1,21 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[context.production.environment]
+  # Put sensitive keys into Netlify UI (Site settings -> Build & deploy -> Environment)
+  # VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY should be configured there.
+  # Optional: CESIUM_ION_TOKEN if you enable Cesium World Terrain in production.
+  NODE_VERSION = "18"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+  Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+  X-Content-Type-Options = "nosniff"
+  Referrer-Policy = "no-referrer-when-downgrade"
+  X-Frame-Options = "DENY"
+  X-XSS-Protection = "0"
