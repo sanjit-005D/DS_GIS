@@ -1,0 +1,10 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "name": "Bengaluru Urban" }, "geometry": { "type": "Point", "coordinates": [77.5946, 12.9716] } },
+    { "type": "Feature", "properties": { "name": "Chennai" }, "geometry": { "type": "Point", "coordinates": [80.2707, 13.0827] } },
+    { "type": "Feature", "properties": { "name": "Mumbai Suburban" }, "geometry": { "type": "Point", "coordinates": [72.8777, 19.0757] } },
+    { "type": "Feature", "properties": { "name": "Hyderabad" }, "geometry": { "type": "Point", "coordinates": [78.4867, 17.3850] } },
+    { "type": "Feature", "properties": { "name": "Pune" }, "geometry": { "type": "Point", "coordinates": [73.8567, 18.5204] } }
+  ]
+}
