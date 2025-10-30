@@ -204,12 +204,38 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
             if (!geo) return
             const { lat, lon } = geo
             // prefer using S.No inside the marker (unique sample identifier). Fall back to other fields if missing.
-            const labelText = (r['S.No'] || r['SNo'] || r['id'] || r['Sample name'] || r['sample_name'] || '').toString()
+            // Normalize the three fields we care about
+            const sNoVal = r['S.No'] ?? r['SNo'] ?? r['id'] ?? ''
+            const sampleNameVal = r['Sample name'] ?? r['sample_name'] ?? ''
+            let geoRaw = r['geo_tag'] ?? r['geo'] ?? null
+            // If geoRaw is an object that contains an inner geo_tag, prefer that
+            try {
+              if (geoRaw && typeof geoRaw === 'object') {
+                if (geoRaw.geo_tag) geoRaw = geoRaw.geo_tag
+                else if (geoRaw['geo_tag']) geoRaw = geoRaw['geo_tag']
+                else if (geoRaw.coordinates && Array.isArray(geoRaw.coordinates)) geoRaw = `${geoRaw.coordinates[1]},${geoRaw.coordinates[0]}`
+                else geoRaw = JSON.stringify(geoRaw)
+              }
+              // if geoRaw is a JSON string containing an object with geo_tag, parse it
+              if (typeof geoRaw === 'string') {
+                const s = geoRaw.trim()
+                if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+                  try {
+                    const parsed = JSON.parse(s)
+                    if (parsed && typeof parsed === 'object') {
+                      if (parsed.geo_tag) geoRaw = parsed.geo_tag
+                    }
+                  } catch (e) { void e }
+                }
+              }
+            } catch (e) { void e }
+
+            const labelText = String(sNoVal ?? '')
             // Build a minimal properties object that exactly matches the table columns we care about
             const props = {
-              'S.No': r['S.No'] ?? r['SNo'] ?? r['id'] ?? '',
-              'Sample name': r['Sample name'] ?? r['sample_name'] ?? '',
-              'geo_tag': r['geo_tag'] ?? null
+              'S.No': sNoVal == null ? '' : String(sNoVal),
+              'Sample name': (typeof sampleNameVal === 'object') ? JSON.stringify(sampleNameVal) : String(sampleNameVal ?? ''),
+              'geo_tag': geoRaw == null ? '' : String(geoRaw)
             }
 
             const ent = viewer.entities.add({
