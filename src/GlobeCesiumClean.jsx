@@ -213,22 +213,75 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
             const ent = viewer.entities.add({
               position: Cesium.Cartesian3.fromDegrees(Number(c.lon), Number(c.lat), 0.0),
               label: {
-                text: String(labelText),
-                font: 'bold 14px Arial',
-                fillColor: Cesium.Color.WHITE,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 2,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                pixelOffset: new Cesium.Cartesian2(0, -12),
-                scaleByDistance: new Cesium.NearFarScalar(2e6, 1.0, 6e6, 0.0),
-                showBackground: false
-              }
+                  text: String(labelText),
+                  font: 'bold 14px Arial',
+                  fillColor: Cesium.Color.WHITE,
+                  outlineColor: Cesium.Color.BLACK,
+                  outlineWidth: 2,
+                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                  pixelOffset: new Cesium.Cartesian2(0, -12),
+                  // Ensure labels remain visible at global altitudes (initial view is ~22M).
+                  // Use a far value large enough so country labels are not scaled to 0 at globe view.
+                  scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1e8, 0.0),
+                  showBackground: false
+                }
             })
             countryLabelEntities.push(ent)
           } catch (e) { void e }
         })
       } catch (e) { void e }
     }
+
+      // If no local GeoJSON was found, attempt a remote fallback (Natural Earth / datasets repo).
+      const fallbackCountriesUrl = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+      try {
+        // If the earlier attempt didn't populate data, try the remote fallback
+        if (typeof loadCountryLabels === 'function') {
+          // loadCountryLabels will attempt to find local files; if that doesn't work, fetch the fallback
+          const original = loadCountryLabels
+          loadCountryLabels = async () => {
+            await original()
+            // if no labels created yet, try remote
+            try {
+              if (!countryLabelEntities || countryLabelEntities.length === 0) {
+                const r = await fetch(fallbackCountriesUrl)
+                if (r.ok) {
+                  const j = await r.json()
+                  if (j && j.features && j.features.length) {
+                    // add labels from fallback
+                    j.features.forEach((f) => {
+                      try {
+                        const geom = f.geometry
+                        if (!geom) return
+                        const c = computeCentroidFromCoords(geom)
+                        if (!c) return
+                        const props = f.properties || {}
+                        const labelText = props.NAME || props.NAME_LONG || props.ADMIN || props.name || props.country || props.NAME_EN || props.Name || ''
+                        if (!labelText) return
+                        const ent = viewer.entities.add({
+                          position: Cesium.Cartesian3.fromDegrees(Number(c.lon), Number(c.lat), 0.0),
+                          label: {
+                            text: String(labelText),
+                            font: 'bold 14px Arial',
+                            fillColor: Cesium.Color.WHITE,
+                            outlineColor: Cesium.Color.BLACK,
+                            outlineWidth: 2,
+                            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                            pixelOffset: new Cesium.Cartesian2(0, -12),
+                            scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1e8, 0.0),
+                            showBackground: false
+                          }
+                        })
+                        countryLabelEntities.push(ent)
+                      } catch (e) { void e }
+                    })
+                  }
+                }
+              }
+            } catch (e) { void e }
+          }
+        }
+      } catch (e) { void e }
 
 
     // If requested, fetch spectral samples from Supabase and render markers
