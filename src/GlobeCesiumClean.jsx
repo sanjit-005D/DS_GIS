@@ -192,16 +192,26 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       try {
         clearSampleEntities()
         if (!showSamples) return
-        const { data: rows, error } = await supabase.from('test').select('*')
+        // select only the exact column names we want (case-sensitive / may include spaces)
+        // Supabase allows quoting column names in the select string
+        const { data: rows, error } = await supabase.from('test').select('"S.No","Sample name","geo_tag"')
         if (error) { console.warn('Supabase fetch error', error); return }
         if (!rows || rows.length === 0) return
         rows.forEach((r) => {
           try {
+            // r will contain only the selected columns (see select below)
             const geo = parseGeoTag(r['geo_tag'])
             if (!geo) return
             const { lat, lon } = geo
             // prefer using S.No inside the marker (unique sample identifier). Fall back to other fields if missing.
             const labelText = (r['S.No'] || r['SNo'] || r['id'] || r['Sample name'] || r['sample_name'] || '').toString()
+            // Build a minimal properties object that exactly matches the table columns we care about
+            const props = {
+              'S.No': r['S.No'] ?? r['SNo'] ?? r['id'] ?? '',
+              'Sample name': r['Sample name'] ?? r['sample_name'] ?? '',
+              'geo_tag': r['geo_tag'] ?? null
+            }
+
             const ent = viewer.entities.add({
               position: Cesium.Cartesian3.fromDegrees(lon, lat, 2.0),
               point: {
@@ -224,7 +234,8 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
                 scaleByDistance: new Cesium.NearFarScalar(2e6, 1.0, 6e6, 0.0),
                 showBackground: false
               },
-              properties: r
+              // store only the minimal properties on the entity
+              properties: props
             })
             sampleEntities.push(ent)
           } catch (e) { void e }
@@ -232,7 +243,14 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
         // highlight selectedSNo if provided
         try {
           if (selectedSNo) {
-            const found = sampleEntities.find(se => (se.properties && String(se.properties['S.No']) === String(selectedSNo)) )
+            const found = sampleEntities.find(se => {
+              try {
+                const p = se && se.properties
+                if (!p) return false
+                // properties on the entity were normalized to contain 'S.No'
+                return String(p['S.No']) === String(selectedSNo)
+              } catch (e) { void e; return false }
+            })
             if (found) {
               try { found.point.color = Cesium.Color.ORANGE } catch (e) { void e }
               try { found.point.pixelSize = 22 } catch (e) { void e }
@@ -243,6 +261,7 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       } catch (e) { console.warn('Failed to fetch or render samples', e) }
     }
 
+    // fetch only the minimal columns from Supabase to avoid passing large nested objects
     try { fetchAndMarkSamples() } catch (e) { void e }
 
     // Start periodic camera reporting (500ms) to update the position box and enforce min altitude.
