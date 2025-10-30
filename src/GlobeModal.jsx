@@ -125,10 +125,9 @@ export default function GlobeModal({ open, onClose, selectedSNo }) {
               <div style={{ fontSize: 13, lineHeight: '1.3' }}>
                 <div><strong>S.No:</strong> {formatVal(selectedSampleDetails?.['S.No'] ?? selectedSampleDetails?.sno ?? selectedSampleDetails?.id ?? '')}</div>
                 <div><strong>Sample name:</strong> {formatVal(selectedSampleDetails?.['Sample name'] ?? selectedSampleDetails?.sample_name ?? '')}</div>
-                {/* render any other useful fields */}
-                {Object.keys(selectedSampleDetails || {}).filter(k => !['S.No','sno','id','Sample name','sample_name','geo_tag'].includes(k)).slice(0,6).map(k => (
-                  <div key={k}><strong>{k}:</strong> {formatVal(selectedSampleDetails[k])}</div>
-                ))}
+                {/* only show the three requested fields */}
+                {/* geo_tag may be a string or JSON string */}
+                <div style={{ marginTop: 6 }}><strong>geo_tag:</strong> {formatVal(selectedSampleDetails?.geo_tag)}</div>
               </div>
             </div>
           </div>

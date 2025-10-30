@@ -296,18 +296,25 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
                 const p = picked.id.properties
                 let sampleName = ''
                 let geo = null
+                let sNo = ''
                 try {
                   if (p) {
                     if (typeof p.getValue === 'function') {
                       try { sampleName = p.getValue('Sample name') ?? p.getValue('sample_name') ?? '' } catch (e) { void e }
                       try { geo = p.getValue('geo_tag') ?? p.getValue('geo') ?? null } catch (e) { void e }
+                      try { sNo = p.getValue('S.No') ?? p.getValue('SNo') ?? p.getValue('id') ?? '' } catch (e) { void e }
                     } else {
                       sampleName = p['Sample name'] ?? p['sample_name'] ?? ''
                       geo = p['geo_tag'] ?? p['geo'] ?? null
+                      sNo = p['S.No'] ?? p['SNo'] ?? p['id'] ?? ''
                     }
                   }
                 } catch (e) { void e }
-                const props = { 'Sample name': sampleName, geo_tag: geo }
+                // Ensure values are primitive or safe strings
+                const normName = (sampleName && typeof sampleName === 'object') ? (sampleName['Sample name'] ?? sampleName.sample_name ?? JSON.stringify(sampleName)) : String(sampleName ?? '')
+                const normGeo = (geo && typeof geo === 'object') ? JSON.stringify(geo) : (geo == null ? '' : String(geo))
+                const normSno = sNo == null ? '' : String(sNo)
+                const props = { 'S.No': normSno, 'Sample name': normName, geo_tag: normGeo }
                 if (typeof onMarkerClick === 'function') onMarkerClick(props)
               } catch (e) { void e }
           }
