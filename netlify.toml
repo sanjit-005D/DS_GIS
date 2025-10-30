@@ -3,13 +3,13 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "20.19.0"
 
 [context.production.environment]
   # Put sensitive keys into Netlify UI (Site settings -> Build & deploy -> Environment)
   # VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY should be configured there.
   # Optional: CESIUM_ION_TOKEN if you enable Cesium World Terrain in production.
-  NODE_VERSION = "18"
+  NODE_VERSION = "20.19.0"
 
 [[headers]]
   for = "/*"

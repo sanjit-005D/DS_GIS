@@ -3,24 +3,25 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "serve:preview": "node scripts/preview-server.cjs",
-    "check:headers": "node scripts/check-headers.cjs",
+  "serve:preview": "node scripts/preview-server.cjs",
+  "check:headers": "node scripts/check-headers.cjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
-    "@turf/turf": "^7.2.0",
-    "mapshaper": "^0.6.113",
     "plotly.js": "^3.1.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-plotly.js": "^2.6.0",
-    "three": "*",
-    "three-globe": "*"
+  "three": "*",
+  "three-globe": "*",
+    "react-plotly.js": "^2.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
