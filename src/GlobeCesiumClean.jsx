@@ -263,6 +263,8 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
               // store only the minimal properties on the entity
               properties: props
             })
+            // also keep a plain JS copy on the entity so picking/PropertyBag issues don't leak nested objects
+            try { ent._sampleProps = props } catch (e) { void e }
             sampleEntities.push(ent)
           } catch (e) { void e }
         })
@@ -332,36 +334,46 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       handler.setInputAction((click) => {
         try {
           const picked = viewer.scene.pick(click.position)
-          if (Cesium.defined(picked) && picked.id && picked.id.properties) {
-            // entity picked — call callback with plain JS object of properties
-              try {
-                // Only surface the minimal details the UI should show on click:
-                // - 'Sample name' (or fallback to 'sample_name')
-                // - 'geo_tag' (raw geo_tag field)
-                const p = picked.id.properties
-                let sampleName = ''
-                let geo = null
-                let sNo = ''
+          if (Cesium.defined(picked) && picked.id) {
+            try {
+              const ent = picked.id
+              // prefer the plain JS copy we attached to the entity
+              let props = null
+              try { props = ent._sampleProps ?? null } catch (e) { void e }
+              if (!props && ent.properties) {
+                const p = ent.properties
                 try {
-                  if (p) {
-                    if (typeof p.getValue === 'function') {
-                      try { sampleName = p.getValue('Sample name') ?? p.getValue('sample_name') ?? '' } catch (e) { void e }
-                      try { geo = p.getValue('geo_tag') ?? p.getValue('geo') ?? null } catch (e) { void e }
-                      try { sNo = p.getValue('S.No') ?? p.getValue('SNo') ?? p.getValue('id') ?? '' } catch (e) { void e }
-                    } else {
-                      sampleName = p['Sample name'] ?? p['sample_name'] ?? ''
-                      geo = p['geo_tag'] ?? p['geo'] ?? null
-                      sNo = p['S.No'] ?? p['SNo'] ?? p['id'] ?? ''
+                  if (typeof p.getValue === 'function') {
+                    const sNo = (p.getValue('S.No') ?? p.getValue('SNo') ?? p.getValue('id') ?? '')
+                    const name = (p.getValue('Sample name') ?? p.getValue('sample_name') ?? '')
+                    let geo = (p.getValue('geo_tag') ?? p.getValue('geo') ?? null)
+                    try {
+                      if (geo && typeof geo === 'object') {
+                        if (geo.geo_tag) geo = geo.geo_tag
+                        else if (geo.coordinates && Array.isArray(geo.coordinates)) geo = `${geo.coordinates[1]},${geo.coordinates[0]}`
+                        else geo = JSON.stringify(geo)
+                      }
+                      if (typeof geo === 'string') {
+                        const s = geo.trim()
+                        if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+                          try { const parsed = JSON.parse(s); if (parsed && parsed.geo_tag) geo = parsed.geo_tag } catch (e) { void e }
+                        }
+                      }
+                    } catch (e) { void e }
+                    props = { 'S.No': sNo == null ? '' : String(sNo), 'Sample name': String(name ?? ''), geo_tag: geo == null ? '' : String(geo) }
+                  } else {
+                    const sNo = p['S.No'] ?? p['SNo'] ?? p['id'] ?? ''
+                    const name = p['Sample name'] ?? p['sample_name'] ?? ''
+                    let geo = p['geo_tag'] ?? p['geo'] ?? ''
+                    if (geo && typeof geo === 'object') {
+                      try { geo = geo.geo_tag ?? (geo.coordinates && Array.isArray(geo.coordinates) ? `${geo.coordinates[1]},${geo.coordinates[0]}` : JSON.stringify(geo)) } catch (e) { void e }
                     }
+                    props = { 'S.No': sNo == null ? '' : String(sNo), 'Sample name': String(name ?? ''), geo_tag: geo == null ? '' : String(geo) }
                   }
                 } catch (e) { void e }
-                // Ensure values are primitive or safe strings
-                const normName = (sampleName && typeof sampleName === 'object') ? (sampleName['Sample name'] ?? sampleName.sample_name ?? JSON.stringify(sampleName)) : String(sampleName ?? '')
-                const normGeo = (geo && typeof geo === 'object') ? JSON.stringify(geo) : (geo == null ? '' : String(geo))
-                const normSno = sNo == null ? '' : String(sNo)
-                const props = { 'S.No': normSno, 'Sample name': normName, geo_tag: normGeo }
-                if (typeof onMarkerClick === 'function') onMarkerClick(props)
-              } catch (e) { void e }
+              }
+              if (props && typeof onMarkerClick === 'function') onMarkerClick(props)
+            } catch (e) { void e }
           }
         } catch (e) { void e }
       }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
