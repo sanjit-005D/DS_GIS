@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-env node */
 // Simple static preview server that sets Cache-Control and X-Content-Type-Options headers
 // Usage: node scripts/preview-server.js [port] (defaults to 5177)
 
@@ -37,8 +38,10 @@ const server = http.createServer((req, res) => {
 
     const parsed = url.parse(req.url)
     let pathname = decodeURIComponent(parsed.pathname)
-  // Sanitize: remove any parent-directory attempts like ../ or ..\
-  pathname = pathname.replace(/\.\.[\/\\]/g, '')
+    // Sanitize: remove any parent-directory attempts like ../ or ..\
+  // avoid regex escaping pitfalls: remove all '../' and '..\' occurrences
+  while (pathname.indexOf('../') !== -1) pathname = pathname.split('../').join('')
+  while (pathname.indexOf('..\\') !== -1) pathname = pathname.split('..\\').join('')
     let filePath = path.join(root, pathname)
 
     // if directory or not found, serve index.html (SPA fallback)
@@ -53,23 +56,17 @@ const server = http.createServer((req, res) => {
 
       // Security: ensure we don't expose legacy or undesired headers.
       // Some scanners flag X-XSS-Protection and X-Frame-Options as deprecated or unnecessary.
-      try { res.removeHeader('X-XSS-Protection') } catch (e) {}
-      try { res.removeHeader('X-Frame-Options') } catch (e) {}
-      try { res.removeHeader('Expires') } catch (e) {}
+  try { res.removeHeader('X-XSS-Protection') } catch (e) { void e }
+  try { res.removeHeader('X-Frame-Options') } catch (e) { void e }
+  try { res.removeHeader('Expires') } catch (e) { void e }
 
       // Add a minimal Content-Security-Policy with frame-ancestors (recommended over X-Frame-Options)
       res.setHeader('Content-Security-Policy', "frame-ancestors 'self'")
 
     const stream = fs.createReadStream(filePath)
-    stream.on('error', (err) => {
-      res.statusCode = 500
-      res.end('Internal Server Error')
-    })
+    stream.on('error', (err) => { void err; res.statusCode = 500; res.end('Internal Server Error') })
     stream.pipe(res)
-  } catch (e) {
-    res.statusCode = 500
-    res.end('Internal Server Error')
-  }
+  } catch (e) { void e; res.statusCode = 500; res.end('Internal Server Error') }
 })
 
 server.listen(port, () => {

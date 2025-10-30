@@ -24,13 +24,13 @@ function App() {
     setError("");
     setLoading(true);
     try {
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+      const { error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (loginError) {
         console.error('Supabase login error object:', loginError);
-        try { console.error('Supabase login error (string):', JSON.stringify(loginError)) } catch (e) {}
+        try { console.error('Supabase login error (string):', JSON.stringify(loginError)) } catch (e) { void e }
         setError(loginError.message || 'Login failed')
         setLoading(false);
         return;
@@ -40,7 +40,7 @@ function App() {
       fetchData();
     } catch (err) {
       console.error('Exception during login:', err);
-      try { console.error(JSON.stringify(err)) } catch (e) {}
+      try { console.error(JSON.stringify(err)) } catch (e) { void e }
       setError("Login failed. " + (err && err.message ? err.message : String(err)));
     }
     setLoading(false);
@@ -170,9 +170,7 @@ function App() {
       try {
         const parsed = JSON.parse(val);
         if (Array.isArray(parsed)) return parsed.map(v => Number(v)).filter(n => !Number.isNaN(n));
-      } catch (e) {
-        // fall through to regex extraction
-      }
+      } catch (e) { void e /* fall through to regex extraction */ }
       // extract numeric tokens (handles brackets, whitespace, commas, etc.)
       const matches = val.match(/-?\d+\.?\d*(?:e[+-]?\d+)?/ig);
       if (matches) return matches.map(Number).filter(n => !Number.isNaN(n));
@@ -200,33 +198,7 @@ function App() {
     return [];
   };
 
-  // Format values for the below-plot single-row table: if an array has one item show that item
-  const formatBelowValue = (val) => {
-    if (val === undefined || val === null) return '';
-    if (Array.isArray(val)) {
-      if (val.length === 1) return String(val[0]);
-      return val.join(', ');
-    }
-    if (typeof val === 'string') {
-      const t = val.trim();
-      // try to parse JSON arrays
-      if (t.startsWith('[') && t.endsWith(']')) {
-        try {
-          const p = JSON.parse(t);
-          if (Array.isArray(p)) return p.length === 1 ? String(p[0]) : p.join(', ');
-        } catch (e) {
-          // fallthrough
-        }
-      }
-      // comma-separated string
-      if (t.includes(',')) {
-        const parts = t.split(',').map(s => s.trim()).filter(Boolean);
-        return parts.length === 1 ? parts[0] : parts.join(', ');
-      }
-      return t;
-    }
-    return String(val);
-  };
+  // (formatBelowValue removed — unused)
 
   // Compute peak (max y) and corresponding x value
   const computePeak = (xA, yA) => {

@@ -1,17 +1,22 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+// ESM-safe __dirname
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
+    // Use explicit alias objects so subpath imports like 'three/tsl' are resolved correctly
+    alias: [
       // force all imports of 'three' to the single node_modules copy to avoid duplicate runtimes
-      three: path.resolve(__dirname, 'node_modules/three')
-      , 'three/webgpu': path.resolve(__dirname, 'src/shims/three-webgpu.js')
-      , 'three/tsl': path.resolve(__dirname, 'src/shims/three-tsl.js')
-    }
+      { find: 'three', replacement: path.resolve(__dirname, 'node_modules/three') },
+      { find: 'three/webgpu', replacement: path.resolve(__dirname, 'src/shims/three-webgpu.js') },
+      { find: 'three/tsl', replacement: path.resolve(__dirname, 'src/shims/three-tsl.js') },
+    ]
   },
   optimizeDeps: {
     include: ['three', 'three-globe']

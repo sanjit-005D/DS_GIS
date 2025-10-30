@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-env node */
 // Simple header checker for local/dev preview servers
 // Usage: node scripts/check-headers.js [url]
 
@@ -33,7 +34,7 @@ async function run() {
       try {
         const u = new URL(p, target).toString()
         results.push(await fetchOnce(u))
-      } catch (e) {}
+      } catch (e) { void e }
     }
 
     results.forEach(r => {

@@ -17,7 +17,7 @@ self.onmessage = function (e) {
             const parsed = JSON.parse(t);
             if (Array.isArray(parsed)) return parsed.map(v => Number(v)).filter(n => !Number.isNaN(n));
           } catch (e) {
-            // fall through to regex extraction
+            void e // fall through to regex extraction
           }
         }
         // regex fallback (handles numbers separated by commas/spaces)
@@ -27,9 +27,7 @@ self.onmessage = function (e) {
         // last resort, split on commas/whitespace
         return t.replace(/^\[|\]$/g, '').split(/[,"]+|\s+/).filter(Boolean).map(Number).filter(n => !Number.isNaN(n));
       }
-    } catch (err) {
-      // swallow errors in worker and return empty array so main thread can proceed
-    }
+    } catch (err) { void err /* swallow errors in worker and return empty array so main thread can proceed */ }
     return [];
   };
 

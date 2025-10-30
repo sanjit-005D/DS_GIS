@@ -22,4 +22,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-# ignore local tmp and large geo archives\ntmp/\npublic/*.zip\npublic/geoBoundaries*\n
+node_modules
+node_modules

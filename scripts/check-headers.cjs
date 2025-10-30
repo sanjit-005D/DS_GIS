@@ -31,7 +31,7 @@ async function run() {
       try {
         const u = new URL(p, target).toString()
         results.push(await fetchOnce(u))
-      } catch (e) {}
+      } catch (e) { void e }
     }
 
     results.forEach(r => {

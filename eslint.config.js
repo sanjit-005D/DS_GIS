@@ -26,4 +26,17 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  // Scripts run in Node and may use CommonJS. Treat them as node env so ESLint
+  // no-undef checks for `require` and `process` are correct.
+  {
+    files: ['scripts/**', 'scripts/**/*.js', 'scripts/**/*.cjs'],
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: { sourceType: 'script' }
+    },
+    rules: {
+      // scripts are utilities; relax the unused vars pattern here
+      'no-unused-vars': ['error', { args: 'none' }]
+    }
+  }
 ])

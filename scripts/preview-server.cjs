@@ -52,23 +52,17 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', contentType)
 
     // Security: ensure we don't expose legacy or undesired headers.
-    try { res.removeHeader('X-XSS-Protection') } catch (e) {}
-    try { res.removeHeader('X-Frame-Options') } catch (e) {}
-    try { res.removeHeader('Expires') } catch (e) {}
+  try { res.removeHeader('X-XSS-Protection') } catch (e) { void e }
+  try { res.removeHeader('X-Frame-Options') } catch (e) { void e }
+  try { res.removeHeader('Expires') } catch (e) { void e }
 
     // Add a minimal Content-Security-Policy with frame-ancestors (recommended over X-Frame-Options)
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'")
 
     const stream = fs.createReadStream(filePath)
-    stream.on('error', (err) => {
-      res.statusCode = 500
-      res.end('Internal Server Error')
-    })
+    stream.on('error', (err) => { void err; res.statusCode = 500; res.end('Internal Server Error') })
     stream.pipe(res)
-  } catch (e) {
-    res.statusCode = 500
-    res.end('Internal Server Error')
-  }
+  } catch (e) { void e; res.statusCode = 500; res.end('Internal Server Error') }
 })
 
 server.listen(port, () => {
