@@ -26,7 +26,9 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
 
   // This effect intentionally runs only once on mount; default to satellite ('gibs')
   useEffect(() => {
-    let cancelled = false
+  let cancelled = false
+  // store country label entities at the effect scope so cleanup can access them
+  let countryLabelEntities = []
 
     const loadCesium = () => new Promise((resolve, reject) => {
       if (window.Cesium) { resolve(window.Cesium); return }
@@ -138,7 +140,96 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       // (no automatic home capture here) — home should be set explicitly by the user via the UI
     } catch (e) { void e }
 
-    viewerRef.current = viewer
+  viewerRef.current = viewer
+
+    // Attempt to load a GeoJSON file from public/ containing admin-0 countries
+    const possibleCountryFiles = [
+      '/ne_10m_admin_0_countries.geojson',
+      '/ne_50m_admin_0_countries.geojson',
+      '/ne_110m_admin_0_countries.geojson',
+      '/admin0_countries.geojson',
+      '/countries.geojson',
+      '/state-polygons.topo.json',
+      '/state-polygons.topojson'
+    ]
+
+    const computeCentroidFromCoords = (geom) => {
+      // geom is a GeoJSON geometry object
+      try {
+        if (!geom) return null
+        const type = geom.type
+        let ring = null
+        if (type === 'Polygon') ring = geom.coordinates && geom.coordinates[0]
+        else if (type === 'MultiPolygon') ring = (geom.coordinates && geom.coordinates[0] && geom.coordinates[0][0])
+        if (!ring || ring.length === 0) return null
+        // Simple centroid: average of vertices
+        let sumX = 0, sumY = 0, count = 0
+        for (let i = 0; i < ring.length; i++) {
+          const c = ring[i]
+          // GeoJSON coordinate order: [lon, lat]
+          const lon = Number(c[0])
+          const lat = Number(c[1])
+          if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue
+          sumX += lon; sumY += lat; count++
+        }
+        if (count === 0) return null
+        return { lon: sumX / count, lat: sumY / count }
+      } catch (e) { void e; return null }
+    }
+
+    const loadCountryLabels = async () => {
+      try {
+        let data = null
+        for (const path of possibleCountryFiles) {
+          try {
+            const res = await fetch(path)
+            if (!res.ok) continue
+            // detect topojson by extension and skip (we prefer GeoJSON). If it's topojson, attempt to parse if it looks like GeoJSON
+            const txt = await res.text()
+            try {
+              const parsed = JSON.parse(txt)
+              // naive: if parsed.type === 'Topology', it's TopoJSON — skip
+              if (parsed && parsed.type === 'Topology') {
+                // skip topojson (not supported here)
+                continue
+              }
+              data = parsed
+              break
+            } catch (e) { void e; continue }
+          } catch (e) { void e; continue }
+        }
+        if (!data || !data.features) return
+        // iterate features and add labels
+        data.features.forEach((f) => {
+          try {
+            const geom = f.geometry
+            if (!geom) return
+            const c = computeCentroidFromCoords(geom)
+            if (!c) return
+            // determine label text from common properties
+            const props = f.properties || {}
+            const labelText = props.NAME || props.NAME_LONG || props.ADMIN || props.name || props.country || props.NAME_EN || props.Name || ''
+            if (!labelText) return
+            const ent = viewer.entities.add({
+              position: Cesium.Cartesian3.fromDegrees(Number(c.lon), Number(c.lat), 0.0),
+              label: {
+                text: String(labelText),
+                font: 'bold 14px Arial',
+                fillColor: Cesium.Color.WHITE,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 2,
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                pixelOffset: new Cesium.Cartesian2(0, -12),
+                scaleByDistance: new Cesium.NearFarScalar(2e6, 1.0, 6e6, 0.0),
+                showBackground: false
+              }
+            })
+            countryLabelEntities.push(ent)
+          } catch (e) { void e }
+        })
+      } catch (e) { void e }
+    }
+
 
     // If requested, fetch spectral samples from Supabase and render markers
     let sampleEntities = []
@@ -289,8 +380,10 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       } catch (e) { console.warn('Failed to fetch or render samples', e) }
     }
 
-    // fetch only the minimal columns from Supabase to avoid passing large nested objects
-    try { fetchAndMarkSamples() } catch (e) { void e }
+  // fetch only the minimal columns from Supabase to avoid passing large nested objects
+  try { fetchAndMarkSamples() } catch (e) { void e }
+  // Try to load country labels from any GeoJSON placed in `public/`
+  try { loadCountryLabels() } catch (e) { void e }
 
     // Start periodic camera reporting (500ms) to update the position box and enforce min altitude.
     try {
@@ -424,6 +517,15 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
           } catch (e) { void e }
           try {
             if (v._noDataObserver && typeof v._noDataObserver.disconnect === 'function') v._noDataObserver.disconnect()
+          } catch (e) { void e }
+          try {
+            // remove any country label entities we added
+            try {
+              if (Array.isArray(countryLabelEntities) && countryLabelEntities.length) {
+                countryLabelEntities.forEach(ent => { try { if (v.entities) v.entities.remove(ent) } catch (e) { void e } })
+                countryLabelEntities = []
+              }
+            } catch (e) { void e }
           } catch (e) { void e }
           try {
             v.destroy()
