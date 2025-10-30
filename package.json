@@ -9,19 +9,21 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-  "serve:preview": "node scripts/preview-server.cjs",
-  "check:headers": "node scripts/check-headers.cjs",
+    "serve:preview": "node scripts/preview-server.cjs",
+    "check:headers": "node scripts/check-headers.cjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "convert:shp": "node scripts/convert-shapefile.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
     "plotly.js": "^3.1.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-  "three": "*",
-  "three-globe": "*",
-    "react-plotly.js": "^2.6.0"
+    "react-plotly.js": "^2.6.0",
+    "shapefile": "^0.6.6",
+    "three": "*",
+    "three-globe": "*"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
