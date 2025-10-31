@@ -152,7 +152,7 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       } catch (e) { void e }
     }
 
-    const fetchAndAddSamples = async (Cesium) => {
+  const fetchAndAddSamples = async (Cesium) => {
       try {
         if (!showSamples) return
         const { data: rows, error } = await supabase.from('test').select('"S.No","Sample name","geo_tag"')
@@ -197,9 +197,28 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
             })
             // keep a plain JS copy on the entity for easier access when picking
             try { ent._sampleProps = props } catch (e) { void e }
+            // keep plain array and also attach to viewer for cross-effect access
             sampleEntities.push(ent)
           } catch (e) { void e }
         })
+        try {
+          const v2 = viewerRef.current
+          if (v2) {
+            try { v2._sampleEntities = sampleEntities } catch (e) { void e }
+          }
+        } catch (e) { void e }
+        // apply selected highlight if requested
+        try {
+          if (selectedSNo) {
+            const found = sampleEntities.find(se => {
+              try { return String(se._sampleProps?.['S.No'] ?? se.properties?.['S.No'] ?? '') === String(selectedSNo) } catch (e) { return false }
+            })
+            if (found) {
+              try { found.point.color = Cesium.Color.RED } catch (e) { void e }
+              try { found.point.pixelSize = 18 } catch (e) { void e }
+            }
+          }
+        } catch (e) { void e }
       } catch (e) { console.warn('Failed to fetch or render samples', e) }
     }
 
@@ -272,6 +291,30 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
         try { viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(78.9629, 20.5937, INITIAL_VIEW_ALTITUDE), duration: 2.5 }) } catch (e) { void e }
 
         viewerRef.current = viewer
+
+        // start periodic camera reporting and enforce minimum altitude
+        try {
+          const camInterval = setInterval(() => {
+            try {
+              const pos = viewer.camera.position
+              const carto = Cesium.Cartographic.fromCartesian(pos)
+              const lon = Cesium.Math.toDegrees(carto.longitude)
+              const lat = Cesium.Math.toDegrees(carto.latitude)
+              let alt = carto.height || 0
+              if (alt < MIN_CAMERA_ALTITUDE && !viewer._isClamping) {
+                viewer._isClamping = true
+                try {
+                  viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(lon, lat, MIN_CAMERA_ALTITUDE), duration: 0.6 })
+                    .then(() => { try { viewer._isClamping = false } catch (e) { void e } })
+                    .catch(() => { try { viewer._isClamping = false } catch (e) { void e } })
+                } catch (e) { void e; viewer._isClamping = false }
+                alt = MIN_CAMERA_ALTITUDE
+              }
+              try { if (typeof onCameraChange === 'function') onCameraChange({ lat, lon, alt }) } catch (e) { void e }
+            } catch (e) { void e }
+          }, 500)
+          viewer._cameraInterval = camInterval
+        } catch (e) { void e }
 
         try {
           handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
@@ -354,6 +397,9 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
               countryLabelEntities = []
             }
           } catch (e) { void e }
+          try {
+            if (v._cameraInterval) { try { clearInterval(v._cameraInterval) } catch (e) { void e }; v._cameraInterval = null }
+          } catch (e) { void e }
           try { v.destroy(); viewerRef.current = null } catch (e) { void e; viewerRef.current = null }
         }
       } catch (e) { void e }
@@ -364,6 +410,20 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
     const v = viewerRef.current
     if (!v) return
     try { if (typeof v._setImageryChoice === 'string') { /* imagery handled in init */ } } catch (e) { void e }
+    // react to selectedSNo changes by highlighting the corresponding marker
+    try {
+      const ents = v._sampleEntities || []
+      // reset all markers to default
+      ents.forEach(se => {
+        try { if (se && se.point) { se.point.color = Cesium.Color.YELLOW; se.point.pixelSize = 14 } } catch (e) { void e }
+      })
+      if (selectedSNo) {
+        try {
+          const found = ents.find(se => { try { return String(se._sampleProps?.['S.No'] ?? se.properties?.['S.No'] ?? '') === String(selectedSNo) } catch (e) { return false } })
+          if (found) { try { found.point.color = Cesium.Color.RED; found.point.pixelSize = 20 } catch (e) { void e } }
+        } catch (e) { void e }
+      }
+    } catch (e) { void e }
   }, [selectedLayer])
 
   return (
