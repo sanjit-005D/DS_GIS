@@ -32,7 +32,7 @@ function parseGeoTag(value) {
   return null
 }
 
-export default function GlobeCesium({ className, selectedLayer = 'gibs', onCameraChange, showSamples = true, selectedSNo, onMarkerClick }) {
+export default function GlobeCesium({ className, selectedLayer = 'gibs', onCameraChange, showSamples = true, showLabels = true, selectedSNo, onMarkerClick }) {
   const containerRef = useRef(null)
   const viewerRef = useRef(null)
   const [loading, setLoading] = useState(true)
@@ -40,8 +40,10 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
   const resolveLayer = (prop) => (prop ? prop : 'gibs')
 
   useEffect(() => {
-    let cancelled = false
-    let sampleEntities = []
+  let cancelled = false
+  // keep references to entities we add so we can remove them on unmount
+  let sampleEntities = []
+  let countryLabelEntities = []
     let handler = null
 
     const ensureCesium = () => new Promise((resolve, reject) => {
@@ -75,6 +77,81 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       } catch (e) { void e }
     }
 
+    const computeCentroidFromCoords = (geom) => {
+      try {
+        if (!geom) return null
+        const type = geom.type
+        let ring = null
+        if (type === 'Polygon') ring = geom.coordinates && geom.coordinates[0]
+        else if (type === 'MultiPolygon') ring = (geom.coordinates && geom.coordinates[0] && geom.coordinates[0][0])
+        if (!ring || ring.length === 0) return null
+        let sumX = 0, sumY = 0, count = 0
+        for (let i = 0; i < ring.length; i++) {
+          const c = ring[i]
+          const lon = Number(c[0])
+          const lat = Number(c[1])
+          if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue
+          sumX += lon; sumY += lat; count++
+        }
+        if (count === 0) return null
+        return { lon: sumX / count, lat: sumY / count }
+      } catch (e) { void e; return null }
+    }
+
+    const loadCountryLabels = async (Cesium, viewer) => {
+      try {
+        if (!showLabels) return
+        const possibleCountryFiles = [
+          '/ne_10m_admin_0_countries.geojson',
+          '/ne_50m_admin_0_countries.geojson',
+          '/ne_110m_admin_0_countries.geojson',
+          '/admin0_countries.geojson',
+          '/countries.geojson'
+        ]
+        let data = null
+        for (const path of possibleCountryFiles) {
+          try {
+            const res = await fetch(path)
+            if (!res.ok) continue
+            const txt = await res.text()
+            try {
+              const parsed = JSON.parse(txt)
+              if (parsed && parsed.type === 'Topology') continue
+              data = parsed
+              break
+            } catch (e) { void e; continue }
+          } catch (e) { void e; continue }
+        }
+        if (!data || !data.features) return
+        data.features.forEach((f) => {
+          try {
+            const geom = f.geometry
+            if (!geom) return
+            const c = computeCentroidFromCoords(geom)
+            if (!c) return
+            const props = f.properties || {}
+            const labelText = props.NAME || props.NAME_LONG || props.ADMIN || props.name || props.country || props.NAME_EN || props.Name || ''
+            if (!labelText) return
+            const ent = viewer.entities.add({
+              position: Cesium.Cartesian3.fromDegrees(Number(c.lon), Number(c.lat), 0.0),
+              label: {
+                text: String(labelText),
+                font: 'bold 14px Arial',
+                fillColor: Cesium.Color.WHITE,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 2,
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                pixelOffset: new Cesium.Cartesian2(0, -12),
+                scaleByDistance: new Cesium.NearFarScalar(2e6, 1.0, 6e6, 0.0),
+                showBackground: false
+              }
+            })
+            countryLabelEntities.push(ent)
+          } catch (e) { void e }
+        })
+      } catch (e) { void e }
+    }
+
     const fetchAndAddSamples = async (Cesium) => {
       try {
         if (!showSamples) return
@@ -101,7 +178,7 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
             const ent = v.entities.add({
               position: Cesium.Cartesian3.fromDegrees(lon, lat, 2.0),
               point: {
-                pixelSize: 12,
+                pixelSize: 14,
                 color: Cesium.Color.YELLOW,
                 outlineColor: Cesium.Color.BLACK,
                 outlineWidth: 1
@@ -118,6 +195,8 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
               },
               properties: props
             })
+            // keep a plain JS copy on the entity for easier access when picking
+            try { ent._sampleProps = props } catch (e) { void e }
             sampleEntities.push(ent)
           } catch (e) { void e }
         })
@@ -196,19 +275,64 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
 
         try {
           handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+          handler.setInputAction((movement) => {
+            try {
+              const picked = viewer.scene.pick(movement.endPosition)
+              if (Cesium.defined(picked) && picked.id) viewer.container.style.cursor = 'pointer'
+              else viewer.container.style.cursor = ''
+            } catch (e) { void e }
+          }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
+
           handler.setInputAction((click) => {
             try {
               const picked = viewer.scene.pick(click.position)
-              if (picked && picked.id && picked.id.properties) {
-                const props = picked.id.properties
-                if (onMarkerClick) onMarkerClick(props)
+              if (Cesium.defined(picked) && picked.id) {
+                try {
+                  const ent = picked.id
+                  let props = null
+                  try { props = ent._sampleProps ?? null } catch (e) { void e }
+                  if (!props && ent.properties) {
+                    const p = ent.properties
+                    try {
+                      if (typeof p.getValue === 'function') {
+                        const sNo = (p.getValue('S.No') ?? p.getValue('SNo') ?? p.getValue('id') ?? '')
+                        const name = (p.getValue('Sample name') ?? p.getValue('sample_name') ?? '')
+                        let geo = (p.getValue('geo_tag') ?? p.getValue('geo') ?? null)
+                        try {
+                          if (geo && typeof geo === 'object') {
+                            if (geo.geo_tag) geo = geo.geo_tag
+                            else if (geo.coordinates && Array.isArray(geo.coordinates)) geo = `${geo.coordinates[1]},${geo.coordinates[0]}`
+                            else geo = JSON.stringify(geo)
+                          }
+                          if (typeof geo === 'string') {
+                            const s = geo.trim()
+                            if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+                              try { const parsed = JSON.parse(s); if (parsed && parsed.geo_tag) geo = parsed.geo_tag } catch (e) { void e }
+                            }
+                          }
+                        } catch (e) { void e }
+                        props = { 'S.No': sNo == null ? '' : String(sNo), 'Sample name': String(name ?? ''), geo_tag: geo == null ? '' : String(geo) }
+                      } else {
+                        const sNo = p['S.No'] ?? p['SNo'] ?? p['id'] ?? ''
+                        const name = p['Sample name'] ?? p['sample_name'] ?? ''
+                        let geo = p['geo_tag'] ?? p['geo'] ?? ''
+                        if (geo && typeof geo === 'object') {
+                          try { geo = geo.geo_tag ?? (geo.coordinates && Array.isArray(geo.coordinates) ? `${geo.coordinates[1]},${geo.coordinates[0]}` : JSON.stringify(geo)) } catch (e) { void e }
+                        }
+                        props = { 'S.No': sNo == null ? '' : String(sNo), 'Sample name': String(name ?? ''), geo_tag: geo == null ? '' : String(geo) }
+                      }
+                    } catch (e) { void e }
+                  }
+                  if (props && typeof onMarkerClick === 'function') onMarkerClick(props)
+                } catch (e) { void e }
               }
             } catch (e) { void e }
           }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
         } catch (e) { void e }
 
-        await fetchAndAddSamples(Cesium)
-        setLoading(false)
+  await fetchAndAddSamples(Cesium)
+  try { await loadCountryLabels(Cesium, viewer) } catch (e) { void e }
+  setLoading(false)
       } catch (err) {
         console.error('Cesium init failed', err)
         setLoading(false)
@@ -221,7 +345,18 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       cancelled = true
       try { clearSamples() } catch (e) { void e }
       try { if (handler && typeof handler.destroy === 'function') handler.destroy() } catch (e) { void e }
-      try { const v = viewerRef.current; if (v) { v.destroy(); viewerRef.current = null } } catch (e) { void e }
+      try {
+        const v = viewerRef.current
+        if (v) {
+          try {
+            if (Array.isArray(countryLabelEntities) && countryLabelEntities.length) {
+              countryLabelEntities.forEach(ent => { try { if (v.entities) v.entities.remove(ent) } catch (e) { void e } })
+              countryLabelEntities = []
+            }
+          } catch (e) { void e }
+          try { v.destroy(); viewerRef.current = null } catch (e) { void e; viewerRef.current = null }
+        }
+      } catch (e) { void e }
     }
   }, [onCameraChange, showSamples, selectedSNo, onMarkerClick, selectedLayer])
 
