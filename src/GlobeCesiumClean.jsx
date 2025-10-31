@@ -142,7 +142,9 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
                 outlineWidth: 2,
                 style: Cesium.LabelStyle.FILL_AND_OUTLINE,
                 pixelOffset: new Cesium.Cartesian2(0, -12),
-                scaleByDistance: new Cesium.NearFarScalar(2e6, 1.0, 6e6, 0.0),
+                // Make labels visible at a much wider range so they appear at global zoom
+                // Initial view altitude is ~22e6, so ensure far distance is larger than that.
+                scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 5e7, 0.0),
                 showBackground: false
               }
             })
