@@ -1,1 +1,240 @@
-import React, { useEffect, useRef, useState } from 'react'\nimport { supabase } from './supabaseClient'\n\n// Provider configuration moved to module scope so it's stable for hooks\nconst providerConfig = {\n  gibs: { minDistance: 200, maximumLevel: 19 },\n  osm: { minDistance: 50, maximumLevel: 19 }\n}\n\n// Minimum allowable camera altitude (meters) ΓÇö do not allow zooming closer than this\nconst MIN_CAMERA_ALTITUDE = 350\n// Initial view altitude (meters) ΓÇö used for the initial flyTo and the Home destination\nconst INITIAL_VIEW_ALTITUDE = 22000000\n\n// Single, clean implementation (new filename to avoid the corrupted original).\n// `showLabels` is not implemented yet ΓÇö omit to avoid unused var\nexport default function GlobeCesium({ className, selectedLayer = 'gibs', onCameraChange, showSamples = true, selectedSNo, onMarkerClick }) {\n  const containerRef = useRef(null)\n  const viewerRef = useRef(null)\n  const [loading, setLoading] = useState(true)\n\n  const resolveLayer = (prop) => {\n    if (prop) return prop\n    return 'gibs'\n  }\n\n  // This effect intentionally runs only once on mount; default to satellite ('gibs')\n  useEffect(() => {\n  let cancelled = false\n  // store country label entities at the effect scope so cleanup can access them\n  let countryLabelEntities = []\n\n    const loadCesium = () => new Promise((resolve, reject) => {\n      if (window.Cesium) { resolve(window.Cesium); return }\n      if (!document.getElementById('cesium-widgets-css')) {\n        const link = document.createElement('link')\n        link.id = 'cesium-widgets-css'\n        link.rel = 'stylesheet'\n        link.href = 'https://unpkg.com/cesium@latest/Build/Cesium/Widgets/widgets.css'\n        document.head.appendChild(link)\n      }\n      if (document.getElementById('cesium-sdk')) {\n        const iv = setInterval(() => { if (window.Cesium) { clearInterval(iv); resolve(window.Cesium) } }, 100)\n        return\n      }\n      const s = document.createElement('script')\n      s.id = 'cesium-sdk'\n      s.src = 'https://unpkg.com/cesium@latest/Build/Cesium/Cesium.js'\n      s.async = true\n      s.onload = () => { if (window.Cesium) resolve(window.Cesium); else reject(new Error('Cesium failed to load')) }\n      s.onerror = (e) => reject(e)\n      document.body.appendChild(s)\n    })\n\n    const init = async () => {\n      try {\n        const Cesium = await loadCesium()\n        if (cancelled) return\n\n  const viewer = new Cesium.Viewer(containerRef.current, { animation: false, timeline: false, baseLayerPicker: false, geocoder: false, homeButton: true, sceneModePicker: true, navigationHelpButton: false, infoBox: false, selectionIndicator: false })\n  try { viewer.imageryLayers.removeAll() } catch (e) { void e }\n\n        const setImagery = (choice) => {\n          try {\n            viewer.imageryLayers.removeAll()\n          } catch (e) { void e }\n\n          const cfg = providerConfig[choice] || providerConfig.osm\n          try {\n            if (viewer.scene && viewer.scene.screenSpaceCameraController) {\n              // enforce a hard minimum altitude across basemaps\n              const minAllowed = Math.max(cfg.minDistance || 0, MIN_CAMERA_ALTITUDE)\n              viewer.scene.screenSpaceCameraController.minimumZoomDistance = minAllowed\n            }\n          } catch (e) { void e }\n\n          if (choice === 'gibs') {\n            // Use Esri World Imagery as a reliable satellite basemap (no token required).\n            // This replaces the previous GIBS provider which in some environments failed to fetch tiles.\n            try {\n              viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({\n                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',\n                credit: 'Esri World Imagery',\n                maximumLevel: cfg.maximumLevel\n              }))\n            } catch (e) { void e; // fallback to OSM if Esri imagery cannot be added\n              try {\n                viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({\n                  url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',\n                  subdomains: ['a','b','c'],\n                  credit: '┬⌐ OpenStreetMap contributors',\n                  maximumLevel: providerConfig.osm.maximumLevel\n                }))\n              } catch (e) { void e }\n            }\n          } else {\n            try {\n              viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({\n                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',\n                subdomains: ['a','b','c'],\n                credit: '┬⌐ OpenStreetMap contributors',\n                maximumLevel: providerConfig.osm.maximumLevel\n              }))\n            } catch (e) { void e }\n          }\n\n          viewer._currentMinDistance = Math.max(cfg.minDistance || 0, MIN_CAMERA_ALTITUDE)\n\n          // Apply a subtle canvas filter for OSM (street) mode to darken text/labels.\n          try {\n            const applyCanvasFilter = (c) => {\n              try {\n                const canvas = viewer && viewer.scene && viewer.scene.canvas\n                if (!canvas) return\n                if (c === 'osm') {\n                  // darken a bit to increase label contrast\n                  canvas.style.filter = 'brightness(0.85) contrast(0.95)'\n                } else {\n                  // reset for satellite\n                  canvas.style.filter = ''\n                }\n              } catch (e) { void e }\n            }\n            applyCanvasFilter(choice)\n          } catch (e) { void e }\n        }\n\n    // set initial imagery (default to satellite)\n    viewer._setImagery = setImagery\n    setImagery('gibs')\n\n    // Smoothly fly the camera to India (approx. longitude, latitude) at a wider altitude\n      try {\n      viewer.camera.flyTo({\n        // Use the shared initial view altitude constant\n        destination: Cesium.Cartesian3.fromDegrees(78.9629, 20.5937, INITIAL_VIEW_ALTITUDE),\n        duration: 2.5\n      })\n\n      // (no automatic home capture here) ΓÇö home should be set explicitly by the user via the UI\n    } catch (e) { void e }\n\n  viewerRef.current = viewer\n\n    // Attempt to load a GeoJSON file from public/ containing admin-0 countries\n    const possibleCountryFiles = [\n      '/ne_10m_admin_0_countries.geojson',\n      '/ne_50m_admin_0_countries.geojson',\n      '/ne_110m_admin_0_countries.geojson',\n      '/admin0_countries.geojson',\n      '/countries.geojson',\n      '/state-polygons.topo.json',\n      '/state-polygons.topojson'\n    ]\n\n    const computeCentroidFromCoords = (geom) => {\n      // geom is a GeoJSON geometry object\n      try {\n        if (!geom) return null\n        const type = geom.type\n        let ring = null\n        if (type === 'Polygon') ring = geom.coordinates && geom.coordinates[0]\n        else if (type === 'MultiPolygon') ring = (geom.coordinates && geom.coordinates[0] && geom.coordinates[0][0])\n        if (!ring || ring.length === 0) return null\n        // Simple centroid: average of vertices\n        let sumX = 0, sumY = 0, count = 0\n        for (let i = 0; i < ring.length; i++) {\n          const c = ring[i]\n          // GeoJSON coordinate order: [lon, lat]\n          const lon = Number(c[0])\n          const lat = Number(c[1])\n          if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue\n          sumX += lon; sumY += lat; count++\n        }\n        if (count === 0) return null\n        return { lon: sumX / count, lat: sumY / count }\n      } catch (e) { void e; return null }\n    }\n\n    const loadCountryLabels = async () => {\n      try {\n        let data = null\n        for (const path of possibleCountryFiles) {\n          try {\n            const res = await fetch(path)\n            if (!res.ok) continue\n            // detect topojson by extension and skip (we prefer GeoJSON). If it's topojson, attempt to parse if it looks like GeoJSON\n            const txt = await res.text()\n            try {\n              const parsed = JSON.parse(txt)\n              // naive: if parsed.type === 'Topology', it's TopoJSON ΓÇö skip\n              if (parsed && parsed.type === 'Topology') {\n                // skip topojson (not supported here)\n                continue\n              }\n              data = parsed\n              break\n            } catch (e) { void e; continue }\n          } catch (e) { void e; continue }\n        }\n        if (!data || !data.features) return\n        // iterate features and add labels\n        data.features.forEach((f) => {\n          try {\n            const geom = f.geometry\n            if (!geom) return\n            const c = computeCentroidFromCoords(geom)\n            if (!c) return\n            // determine label text from common properties\n            const props = f.properties || {}\n            const labelText = props.NAME || props.NAME_LONG || props.ADMIN || props.name || props.country || props.NAME_EN || props.Name || ''\n            if (!labelText) return\n            const ent = viewer.entities.add({\n              position: Cesium.Cartesian3.fromDegrees(Number(c.lon), Number(c.lat), 0.0),\n              label: {\n                text: String(labelText),\n                font: 'bold 14px Arial',\n                fillColor: Cesium.Color.WHITE,\n                outlineColor: Cesium.Color.BLACK,\n                outlineWidth: 2,\n                style: Cesium.LabelStyle.FILL_AND_OUTLINE,\n                pixelOffset: new Cesium.Cartesian2(0, -12),\n                scaleByDistance: new Cesium.NearFarScalar(2e6, 1.0, 6e6, 0.0),\n                showBackground: false\n              }\n            })\n            countryLabelEntities.push(ent)\n          } catch (e) { void e }\n        })\n      } catch (e) { void e }\n    }\n\n\n    // If requested, fetch spectral samples from Supabase and render markers\n    let sampleEntities = []\n\n    const parseGeoTag = (val) => {\n      if (!val) return null\n      try {\n        // If it's an object with coordinates (GeoJSON)\n        if (typeof val === 'object') {\n          if (val.type === 'Point' && Array.isArray(val.coordinates)) {\n            return { lon: Number(val.coordinates[0]), lat: Number(val.coordinates[1]) }\n          }\n          if (val.longitude !== undefined && val.latitude !== undefined) return { lon: Number(val.longitude), lat: Number(val.latitude) }\n          if (val.lon !== undefined && val.lat !== undefined) return { lon: Number(val.lon), lat: Number(val.lat) }\n        }\n        if (typeof val === 'string') {\n          const s = val.trim()\n          // JSON array or object\n          if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('{') && s.endsWith('}'))) {\n            try {\n              const parsed = JSON.parse(s)\n              return parseGeoTag(parsed)\n            } catch (e) { void e }\n          }\n          // POINT(lon lat)\n          const pointMatch = s.match(/POINT\s*\(?\s*([+-]?\d+\.?\d*)[,\s]+([+-]?\d+\.?\d*)\s*\)?/i)\n          if (pointMatch) return { lon: Number(pointMatch[1]), lat: Number(pointMatch[2]) }\n          // comma-separated lat,lon or lon,lat\n          const parts = s.split(/[;,]/).map(p => p.trim()).filter(Boolean)\n          if (parts.length === 2) {\n            const a = Number(parts[0]), b = Number(parts[1])\n            if (!Number.isNaN(a) && !Number.isNaN(b)) {\n              // guess: if first value is in range -90..90, treat as lat\n              if (a >= -90 && a <= 90) return { lat: a, lon: b }\n              return { lat: b, lon: a }\n            }\n          }\n        }\n      } catch (e) { void e }\n      return null\n    }\n\n    const clearSampleEntities = () => {\n      try {\n        sampleEntities.forEach(se => { try { viewer.entities.remove(se) } catch (e) { void e } })\n        sampleEntities = []\n      } catch (e) { void e }\n    }\n\n    const fetchAndMarkSamples = async () => {\n      try {\n        clearSampleEntities()\n        if (!showSamples) return\n        // select only the exact column names we want (case-sensitive / may include spaces)\n        // Supabase allows quoting column names in the select string\n        const { data: rows, error } = await supabase.from('test').select('"S.No","Sample name","geo_tag"')\n        if (error) { console.warn('Supabase fetch error', error); return }\n        if (!rows || rows.length === 0) return\n        rows.forEach((r) => {\n          try {\n            // r will contain only the selected columns (see select below)\n            const geo = parseGeoTag(r['geo_tag'])\n            if (!geo) return\n            const { lat, lon } = geo\n            // prefer using S.No inside the marker (unique sample identifier). Fall back to other fields if missing.\n            // Normalize the three fields we care about\n            const sNoVal = r['S.No'] ?? r['SNo'] ?? r['id'] ?? ''\n            const sampleNameVal = r['Sample name'] ?? r['sample_name'] ?? ''\n            let geoRaw = r['geo_tag'] ?? r['geo'] ?? null\n            // If geoRaw is an object that contains an inner geo_tag, prefer that\n            try {\n              if (geoRaw && typeof geoRaw === 'object') {\n                if (geoRaw.geo_tag) geoRaw = geoRaw.geo_tag\n                else if (geoRaw['geo_tag']) geoRaw = geoRaw['geo_tag']\n                else if (geoRaw.coordinates && Array.isArray(geoRaw.coordinates)) geoRaw = `${geoRaw.coordinates[1]},${geoRaw.coordinates[0]}`\n                else geoRaw = JSON.stringify(geoRaw)\n              }\n              // if geoRaw is a JSON string containing an object with geo_tag, parse it\n              if (typeof geoRaw === 'string') {\n                const s = geoRaw.trim()\n                if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {\n                  try {\n                    const parsed = JSON.parse(s)\n                    if (parsed && typeof parsed === 'object') {\n                      if (parsed.geo_tag) geoRaw = parsed.geo_tag\n                    }\n                  } catch (e) { void e }\n                }\n              }\n            } catch (e) { void e }\n\n            const labelText = String(sNoVal ?? '')\n            // Build a minimal properties object that exactly matches the table columns we care about\n            const props = {\n              'S.No': sNoVal == null ? '' : String(sNoVal),\n              'Sample name': (typeof sampleNameVal === 'object') ? JSON.stringify(sampleNameVal) : String(sampleNameVal ?? ''),\n              'geo_tag': geoRaw == null ? '' : String(geoRaw)\n            }\n\n            const ent = viewer.entities.add({\n              position: Cesium.Cartesian3.fromDegrees(lon, lat, 2.0),\n              point: {\n                // slightly larger marker so the S.No label can be rendered inside\n                pixelSize: 18,\n                color: Cesium.Color.YELLOW,\n                outlineColor: Cesium.Color.BLACK,\n                outlineWidth: 1\n              },\n              label: {\n                text: labelText,\n                // center the label on top of the point so the S.No appears inside the marker\n                font: 'bold 12px Arial',\n                fillColor: Cesium.Color.BLACK,\n                outlineColor: Cesium.Color.WHITE,\n                outlineWidth: 2,\n                pixelOffset: new Cesium.Cartesian2(0, 0),\n                horizontalOrigin: Cesium.HorizontalOrigin.CENTER,\n                verticalOrigin: Cesium.VerticalOrigin.CENTER,\n                scaleByDistance: new Cesium.NearFarScalar(2e6, 1.0, 6e6, 0.0),\n                showBackground: false\n              },\n              // store only the minimal properties on the entity\n              properties: props\n            })\n            // also keep a plain JS copy on the entity so picking/PropertyBag issues don't leak nested objects\n            try { ent._sampleProps = props } catch (e) { void e }\n            sampleEntities.push(ent)\n          } catch (e) { void e }\n        })\n        // highlight selectedSNo if provided\n        try {\n          if (selectedSNo) {\n            const found = sampleEntities.find(se => {\n              try {\n                const p = se && se.properties\n                if (!p) return false\n                // properties on the entity were normalized to contain 'S.No'\n                return String(p['S.No']) === String(selectedSNo)\n              } catch (e) { void e; return false }\n            })\n            if (found) {\n              try { found.point.color = Cesium.Color.ORANGE } catch (e) { void e }\n              try { found.point.pixelSize = 22 } catch (e) { void e }\n              try { found.label.font = 'bold 14px Arial' } catch (e) { void e }\n            }\n          }\n        } catch (e) { void e }\n      } catch (e) { console.warn('Failed to fetch or render samples', e) }\n    }\n\n  // fetch only the minimal columns from Supabase to avoid passing large nested objects\n  try { fetchAndMarkSamples() } catch (e) { void e }\n  // Try to load country labels from any GeoJSON placed in `public/`\n  try { loadCountryLabels() } catch (e) { void e }\n\n    // Start periodic camera reporting (500ms) to update the position box and enforce min altitude.\n    try {\n      const camInterval = setInterval(() => {\n        try {\n          const pos = viewer.camera.position\n          const carto = Cesium.Cartographic.fromCartesian(pos)\n          const lon = Cesium.Math.toDegrees(carto.longitude)\n          const lat = Cesium.Math.toDegrees(carto.latitude)\n          let alt = carto.height || 0\n          if (alt < MIN_CAMERA_ALTITUDE && !viewer._isClamping) {\n            viewer._isClamping = true\n            try {\n              viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(lon, lat, MIN_CAMERA_ALTITUDE), duration: 0.6 })\n                .then(() => { try { viewer._isClamping = false } catch (e) { void e } })\n                .catch(() => { try { viewer._isClamping = false } catch (e) { void e } })\n            } catch (e) { void e; viewer._isClamping = false }\n            alt = MIN_CAMERA_ALTITUDE\n          }\n          try { if (typeof onCameraChange === 'function') onCameraChange({ lat, lon, alt }) } catch (e) { void e }\n        } catch (e) { void e }\n      }, 500)\n      viewer._cameraInterval = camInterval\n    } catch (e) { void e }\n\n    // pick / click handlers for markers\n    try {\n      const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)\n      // change cursor on hover\n      handler.setInputAction((movement) => {\n        try {\n          const picked = viewer.scene.pick(movement.endPosition)\n          if (Cesium.defined(picked) && picked.id) {\n            viewer.container.style.cursor = 'pointer'\n          } else {\n            viewer.container.style.cursor = ''\n          }\n        } catch (e) { void e }\n      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)\n\n      handler.setInputAction((click) => {\n        try {\n          const picked = viewer.scene.pick(click.position)\n          if (Cesium.defined(picked) && picked.id) {\n            try {\n              const ent = picked.id\n              // prefer the plain JS copy we attached to the entity\n              let props = null\n              try { props = ent._sampleProps ?? null } catch (e) { void e }\n              if (!props && ent.properties) {\n                const p = ent.properties\n                try {\n                  if (typeof p.getValue === 'function') {\n                    const sNo = (p.getValue('S.No') ?? p.getValue('SNo') ?? p.getValue('id') ?? '')\n                    const name = (p.getValue('Sample name') ?? p.getValue('sample_name') ?? '')\n                    let geo = (p.getValue('geo_tag') ?? p.getValue('geo') ?? null)\n                    try {\n                      if (geo && typeof geo === 'object') {\n                        if (geo.geo_tag) geo = geo.geo_tag\n                        else if (geo.coordinates && Array.isArray(geo.coordinates)) geo = `${geo.coordinates[1]},${geo.coordinates[0]}`\n                        else geo = JSON.stringify(geo)\n                      }\n                      if (typeof geo === 'string') {\n                        const s = geo.trim()\n                        if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {\n                          try { const parsed = JSON.parse(s); if (parsed && parsed.geo_tag) geo = parsed.geo_tag } catch (e) { void e }\n                        }\n                      }\n                    } catch (e) { void e }\n                    props = { 'S.No': sNo == null ? '' : String(sNo), 'Sample name': String(name ?? ''), geo_tag: geo == null ? '' : String(geo) }\n                  } else {\n                    const sNo = p['S.No'] ?? p['SNo'] ?? p['id'] ?? ''\n                    const name = p['Sample name'] ?? p['sample_name'] ?? ''\n                    let geo = p['geo_tag'] ?? p['geo'] ?? ''\n                    if (geo && typeof geo === 'object') {\n                      try { geo = geo.geo_tag ?? (geo.coordinates && Array.isArray(geo.coordinates) ? `${geo.coordinates[1]},${geo.coordinates[0]}` : JSON.stringify(geo)) } catch (e) { void e }\n                    }\n                    props = { 'S.No': sNo == null ? '' : String(sNo), 'Sample name': String(name ?? ''), geo_tag: geo == null ? '' : String(geo) }\n                  }\n                } catch (e) { void e }\n              }\n              if (props && typeof onMarkerClick === 'function') onMarkerClick(props)\n            } catch (e) { void e }\n          }\n        } catch (e) { void e }\n      }, Cesium.ScreenSpaceEventType.LEFT_CLICK)\n\n      viewer._markerHandler = handler\n    } catch (e) { void e }\n\n    // Wire the home button to fly to India (ensure home returns to India)\n      // Ensure India is the initial and home position. Clear any previously persisted custom home.\n      try { localStorage.removeItem('globe_home') } catch (e) { void e }\n\n  try {\n  // Home destination altitude set to match the initial view altitude\n  const homeDest = Cesium.Cartesian3.fromDegrees(78.9629, 20.5937, INITIAL_VIEW_ALTITUDE)\n        try {\n          const btn = viewer.container && viewer.container.querySelector && viewer.container.querySelector('.cesium-home-button')\n          if (btn) {\n            const newBtn = btn.cloneNode(true)\n            btn.parentNode.replaceChild(newBtn, btn)\n            newBtn.addEventListener('click', (ev) => {\n              ev.preventDefault(); ev.stopPropagation();\n              try { viewer.camera.flyTo({ destination: homeDest, duration: 1.6 }) } catch (err) { void err }\n            })\n            viewer._homeBtn = newBtn\n            viewer._homeDest = homeDest\n            viewer._homeSet = true\n          }\n        } catch (e) { void e }\n      } catch (e) { void e }\n\n    setLoading(false)\n      } catch (err) { console.error('Cesium init failed', err); setLoading(false) }\n    }\n\n    init()\n\n    return () => {\n      cancelled = true\n      try {\n        const v = viewerRef.current\n        if (v) {\n          try {\n            // clear any camera interval we started\n            if (v._cameraInterval) { clearInterval(v._cameraInterval); v._cameraInterval = null }\n          } catch (e) { void e }\n          try {\n            if (v._screenSpaceHandler && typeof v._screenSpaceHandler.destroy === 'function') v._screenSpaceHandler.destroy()\n          } catch (e) { void e }\n          try {\n            if (v._noDataObserver && typeof v._noDataObserver.disconnect === 'function') v._noDataObserver.disconnect()\n          } catch (e) { void e }\n          try {\n            // remove any country label entities we added\n            try {\n              if (Array.isArray(countryLabelEntities) && countryLabelEntities.length) {\n                countryLabelEntities.forEach(ent => { try { if (v.entities) v.entities.remove(ent) } catch (e) { void e } })\n                countryLabelEntities = []\n              }\n            } catch (e) { void e }\n          } catch (e) { void e }\n          try {\n            v.destroy()\n            viewerRef.current = null\n          } catch (e) { void e; viewerRef.current = null }\n        }\n      } catch (e) { void e }\n      // ensure any canvas filters are removed on unmount\n      try {\n        const v2 = viewerRef.current\n        if (v2 && v2.scene && v2.scene.canvas) { v2.scene.canvas.style.filter = '' }\n      } catch (e) { void e }\n    }\n  }, [onCameraChange, showSamples, selectedSNo, onMarkerClick])\n\n  // React to selectedLayer prop changes and update imagery accordingly\n  useEffect(() => {\n    const v = viewerRef.current\n    if (!v || typeof v._setImagery !== 'function') return\n    const choice = resolveLayer(selectedLayer)\n    try { v._setImagery(choice) } catch (e) { console.warn('Imagery swap failed', e) }\n  }, [selectedLayer])\n\n  return (\n    <div className={className} style={{ width: '100%', height: '100%' }}>\n      {loading && <div style={{ position: 'absolute', left: 12, top: 12, zIndex: 10, color: '#fff' }}>Loading globeΓÇª</div>}\n      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />\n    </div>\n  )\n}\n
+﻿import React, { useEffect, useRef, useState } from 'react'
+import { supabase } from './supabaseClient'
+
+// Provider configuration
+const providerConfig = {
+  gibs: { minDistance: 200, maximumLevel: 19 },
+  osm: { minDistance: 50, maximumLevel: 19 }
+}
+
+const MIN_CAMERA_ALTITUDE = 350
+const INITIAL_VIEW_ALTITUDE = 22000000
+
+function parseGeoTag(value) {
+  if (!value) return null
+  try {
+    if (typeof value === 'string') {
+      const s = value.trim()
+      const csv = s.match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/)
+      if (csv) return { lat: Number(csv[1]), lon: Number(csv[2]) }
+      const point = s.match(/POINT\s*\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)/i)
+      if (point) return { lon: Number(point[1]), lat: Number(point[2]) }
+      try {
+        const j = JSON.parse(s)
+        if (j && j.coordinates && Array.isArray(j.coordinates)) return { lon: Number(j.coordinates[0]), lat: Number(j.coordinates[1]) }
+      } catch (e) { /* ignore */ }
+    } else if (typeof value === 'object') {
+      const v = value
+      if (v.lat != null && v.lon != null) return { lat: Number(v.lat), lon: Number(v.lon) }
+      if (v.coordinates && Array.isArray(v.coordinates)) return { lon: Number(v.coordinates[0]), lat: Number(v.coordinates[1]) }
+    }
+  } catch (e) { /* ignore */ }
+  return null
+}
+
+export default function GlobeCesium({ className, selectedLayer = 'gibs', onCameraChange, showSamples = true, selectedSNo, onMarkerClick }) {
+  const containerRef = useRef(null)
+  const viewerRef = useRef(null)
+  const [loading, setLoading] = useState(true)
+
+  const resolveLayer = (prop) => (prop ? prop : 'gibs')
+
+  useEffect(() => {
+    let cancelled = false
+    let sampleEntities = []
+    let handler = null
+
+    const ensureCesium = () => new Promise((resolve, reject) => {
+      if (window.Cesium) return resolve(window.Cesium)
+      if (!document.getElementById('cesium-widgets-css')) {
+        const link = document.createElement('link')
+        link.id = 'cesium-widgets-css'
+        link.rel = 'stylesheet'
+        link.href = 'https://unpkg.com/cesium@latest/Build/Cesium/Widgets/widgets.css'
+        document.head.appendChild(link)
+      }
+      if (document.getElementById('cesium-sdk')) {
+        const iv = setInterval(() => { if (window.Cesium) { clearInterval(iv); resolve(window.Cesium) } }, 100)
+        return
+      }
+      const s = document.createElement('script')
+      s.id = 'cesium-sdk'
+      s.src = 'https://unpkg.com/cesium@latest/Build/Cesium/Cesium.js'
+      s.async = true
+      s.onload = () => { if (window.Cesium) resolve(window.Cesium); else reject(new Error('Cesium failed to load')) }
+      s.onerror = (e) => reject(e)
+      document.body.appendChild(s)
+    })
+
+    const clearSamples = () => {
+      try {
+        const v = viewerRef.current
+        if (!v || !v.entities) return
+        sampleEntities.forEach(e => { try { v.entities.remove(e) } catch (err) { void err } })
+        sampleEntities = []
+      } catch (e) { void e }
+    }
+
+    const fetchAndAddSamples = async (Cesium) => {
+      try {
+        if (!showSamples) return
+        const { data: rows, error } = await supabase.from('test').select('"S.No","Sample name","geo_tag"')
+        if (error) { console.warn('Supabase fetch error', error); return }
+        if (!rows || rows.length === 0) return
+        const v = viewerRef.current
+        if (!v) return
+
+        rows.forEach((r) => {
+          try {
+            const geo = parseGeoTag(r['geo_tag'])
+            if (!geo) return
+            const lat = Number(geo.lat); const lon = Number(geo.lon)
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return
+            const sNoVal = r['S.No'] ?? r['SNo'] ?? r['id'] ?? ''
+            const labelText = String(sNoVal ?? '')
+            const props = {
+              'S.No': sNoVal == null ? '' : String(sNoVal),
+              'Sample name': (r['Sample name'] == null) ? '' : String(r['Sample name']),
+              'geo_tag': r['geo_tag'] == null ? '' : String(r['geo_tag'])
+            }
+
+            const ent = v.entities.add({
+              position: Cesium.Cartesian3.fromDegrees(lon, lat, 2.0),
+              point: {
+                pixelSize: 12,
+                color: Cesium.Color.YELLOW,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 1
+              },
+              label: {
+                text: labelText,
+                font: 'bold 12px Arial',
+                fillColor: Cesium.Color.BLACK,
+                outlineColor: Cesium.Color.WHITE,
+                outlineWidth: 2,
+                pixelOffset: new Cesium.Cartesian2(0, 0),
+                horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                verticalOrigin: Cesium.VerticalOrigin.CENTER
+              },
+              properties: props
+            })
+            sampleEntities.push(ent)
+          } catch (e) { void e }
+        })
+      } catch (e) { console.warn('Failed to fetch or render samples', e) }
+    }
+
+    const init = async () => {
+      try {
+        const Cesium = await ensureCesium()
+        if (cancelled) return
+
+        const viewer = new Cesium.Viewer(containerRef.current, {
+          animation: false,
+          timeline: false,
+          baseLayerPicker: false,
+          geocoder: false,
+          homeButton: true,
+          sceneModePicker: true,
+          navigationHelpButton: false,
+          infoBox: false,
+          selectionIndicator: false
+        })
+
+        try { viewer.imageryLayers.removeAll() } catch (e) { void e }
+
+        const setImagery = (choice) => {
+          try { viewer.imageryLayers.removeAll() } catch (e) { void e }
+          const cfg = providerConfig[choice] || providerConfig.osm
+          try {
+            if (viewer.scene && viewer.scene.screenSpaceCameraController) {
+              viewer.scene.screenSpaceCameraController.minimumZoomDistance = Math.max(cfg.minDistance || 0, MIN_CAMERA_ALTITUDE)
+            }
+          } catch (e) { void e }
+
+          if (choice === 'gibs') {
+            try {
+              viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                credit: 'Esri World Imagery',
+                maximumLevel: cfg.maximumLevel
+              }))
+            } catch (e) {
+              try {
+                viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+                  url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  subdomains: ['a','b','c'],
+                  credit: '© OpenStreetMap contributors',
+                  maximumLevel: providerConfig.osm.maximumLevel
+                }))
+              } catch (err) { void err }
+            }
+          } else {
+            try {
+              viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: ['a','b','c'],
+                credit: '© OpenStreetMap contributors',
+                maximumLevel: providerConfig.osm.maximumLevel
+              }))
+            } catch (err) { void err }
+          }
+
+          try {
+            const canvas = viewer && viewer.scene && viewer.scene.canvas
+            if (canvas) canvas.style.filter = (choice === 'osm') ? 'brightness(0.85) contrast(0.95)' : ''
+          } catch (e) { void e }
+
+          viewer._setImageryChoice = choice
+        }
+
+        setImagery(resolveLayer(selectedLayer))
+
+        try { viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(78.9629, 20.5937, INITIAL_VIEW_ALTITUDE), duration: 2.5 }) } catch (e) { void e }
+
+        viewerRef.current = viewer
+
+        try {
+          handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+          handler.setInputAction((click) => {
+            try {
+              const picked = viewer.scene.pick(click.position)
+              if (picked && picked.id && picked.id.properties) {
+                const props = picked.id.properties
+                if (onMarkerClick) onMarkerClick(props)
+              }
+            } catch (e) { void e }
+          }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+        } catch (e) { void e }
+
+        await fetchAndAddSamples(Cesium)
+        setLoading(false)
+      } catch (err) {
+        console.error('Cesium init failed', err)
+        setLoading(false)
+      }
+    }
+
+    init()
+
+    return () => {
+      cancelled = true
+      try { clearSamples() } catch (e) { void e }
+      try { if (handler && typeof handler.destroy === 'function') handler.destroy() } catch (e) { void e }
+      try { const v = viewerRef.current; if (v) { v.destroy(); viewerRef.current = null } } catch (e) { void e }
+    }
+  }, [onCameraChange, showSamples, selectedSNo, onMarkerClick, selectedLayer])
+
+  useEffect(() => {
+    const v = viewerRef.current
+    if (!v) return
+    try { if (typeof v._setImageryChoice === 'string') { /* imagery handled in init */ } } catch (e) { void e }
+  }, [selectedLayer])
+
+  return (
+    <div className={className} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {loading && <div style={{ position: 'absolute', left: 12, top: 12, zIndex: 10, color: '#fff' }}>Loading globe…</div>}
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+    </div>
+  )
+}
