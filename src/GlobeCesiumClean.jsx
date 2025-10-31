@@ -81,20 +81,74 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       try {
         if (!geom) return null
         const type = geom.type
-        let ring = null
-        if (type === 'Polygon') ring = geom.coordinates && geom.coordinates[0]
-        else if (type === 'MultiPolygon') ring = (geom.coordinates && geom.coordinates[0] && geom.coordinates[0][0])
-        if (!ring || ring.length === 0) return null
-        let sumX = 0, sumY = 0, count = 0
-        for (let i = 0; i < ring.length; i++) {
-          const c = ring[i]
-          const lon = Number(c[0])
-          const lat = Number(c[1])
-          if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue
-          sumX += lon; sumY += lat; count++
+
+        // helper: compute polygon centroid (area-weighted) using shoelace formula
+        const polygonCentroid = (ring) => {
+          if (!ring || ring.length === 0) return null
+          // ensure ring is closed for algorithm
+          const pts = ring.slice()
+          if (pts.length < 3) return null
+          if (pts[0][0] !== pts[pts.length - 1][0] || pts[0][1] !== pts[pts.length - 1][1]) pts.push(pts[0])
+          let A = 0, Cx = 0, Cy = 0
+          for (let i = 0; i < pts.length - 1; i++) {
+            const x0 = Number(pts[i][0]), y0 = Number(pts[i][1])
+            const x1 = Number(pts[i + 1][0]), y1 = Number(pts[i + 1][1])
+            if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) continue
+            const cross = x0 * y1 - x1 * y0
+            A += cross
+            Cx += (x0 + x1) * cross
+            Cy += (y0 + y1) * cross
+          }
+          A = A / 2
+          if (Math.abs(A) < 1e-9) {
+            // degenerate: fallback to average
+            let sx = 0, sy = 0, cnt = 0
+            for (let i = 0; i < ring.length; i++) {
+              const x = Number(ring[i][0]), y = Number(ring[i][1])
+              if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+              sx += x; sy += y; cnt++
+            }
+            if (cnt === 0) return null
+            return { lon: sx / cnt, lat: sy / cnt }
+          }
+          const cx = Cx / (6 * A)
+          const cy = Cy / (6 * A)
+          return { lon: cx, lat: cy }
         }
-        if (count === 0) return null
-        return { lon: sumX / count, lat: sumY / count }
+
+        if (type === 'Polygon') {
+          const outer = geom.coordinates && geom.coordinates[0]
+          return polygonCentroid(outer)
+        }
+
+        if (type === 'MultiPolygon') {
+          // choose the polygon with the largest absolute area
+          let best = null
+          let bestArea = 0
+          const polys = geom.coordinates || []
+          for (let p = 0; p < polys.length; p++) {
+            const ring = polys[p] && polys[p][0]
+            if (!ring) continue
+            // compute signed area quickly
+            let area = 0
+            for (let i = 0; i < ring.length - 1; i++) {
+              const x0 = Number(ring[i][0]), y0 = Number(ring[i][1])
+              const x1 = Number(ring[i + 1][0]), y1 = Number(ring[i + 1][1])
+              if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) continue
+              area += x0 * y1 - x1 * y0
+            }
+            area = Math.abs(area) / 2
+            if (area > bestArea) { bestArea = area; best = ring }
+          }
+          if (best) return polygonCentroid(best)
+          return null
+        }
+
+        // Fallback for Point or unknown: try Point coordinates or simple averaging
+        if (type === 'Point' && Array.isArray(geom.coordinates)) {
+          return { lon: Number(geom.coordinates[0]), lat: Number(geom.coordinates[1]) }
+        }
+        return null
       } catch (e) { void e; return null }
     }
 
@@ -154,7 +208,7 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
       } catch (e) { void e }
     }
 
-  const fetchAndAddSamples = async (Cesium) => {
+    const fetchAndAddSamples = async (Cesium) => {
       try {
         if (!showSamples) return
         const { data: rows, error } = await supabase.from('test').select('"S.No","Sample name","geo_tag"')
@@ -162,6 +216,12 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
         if (!rows || rows.length === 0) return
         const v = viewerRef.current
         if (!v) return
+
+        // clear any previous sample entities we added
+        try {
+          sampleEntities.forEach(se => { try { v.entities.remove(se) } catch (e) { void e } })
+        } catch (e) { void e }
+        sampleEntities = []
 
         rows.forEach((r) => {
           try {
@@ -197,18 +257,18 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
               },
               properties: props
             })
-            // keep a plain JS copy on the entity for easier access when picking
             try { ent._sampleProps = props } catch (e) { void e }
-            // keep plain array and also attach to viewer for cross-effect access
             sampleEntities.push(ent)
           } catch (e) { void e }
         })
+
         try {
           const v2 = viewerRef.current
           if (v2) {
             try { v2._sampleEntities = sampleEntities } catch (e) { void e }
           }
         } catch (e) { void e }
+
         // apply selected highlight if requested
         try {
           if (selectedSNo) {
