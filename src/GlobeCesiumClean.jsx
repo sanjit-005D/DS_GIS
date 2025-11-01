@@ -177,6 +177,53 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
           } catch (e) { void e; continue }
         }
         if (!data || !data.features) return
+        // Render country labels as canvas billboards aligned to the globe's surface normal.
+        // This makes the text appear tangent to the globe curvature instead of always screen-facing.
+        const makeLabelImage = (text, opts = {}) => {
+          // create a canvas element and draw the text exactly sized to its metrics
+          const fontSize = opts.fontSize || 16
+          const font = `bold ${fontSize}px Arial`
+          const paddingX = opts.paddingX || 8
+          const paddingY = opts.paddingY || 4
+          const bg = opts.background || null
+          const outline = opts.outlineWidth || 2
+
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return null
+          ctx.font = font
+          // measure text to set canvas size tightly (avoid big transparent boxes)
+          const metrics = ctx.measureText(text)
+          const textWidth = Math.ceil(metrics.width || (text.length * fontSize * 0.6))
+          const textHeight = Math.ceil(fontSize * 1.2)
+          const w = textWidth + paddingX * 2 + outline * 2
+          const h = textHeight + paddingY * 2 + outline * 2
+          // respect devicePixelRatio for crispness but limit excessive sizes
+          const ratio = (typeof window !== 'undefined' && window.devicePixelRatio) ? Math.min(window.devicePixelRatio, 2) : 1
+          canvas.width = Math.max(64, Math.ceil(w * ratio))
+          canvas.height = Math.max(24, Math.ceil(h * ratio))
+          ctx.scale(ratio, ratio)
+          // optional background
+          if (bg) {
+            ctx.fillStyle = bg
+            ctx.fillRect(0, 0, w, h)
+          }
+          ctx.font = font
+          ctx.textBaseline = 'middle'
+          ctx.textAlign = 'center'
+          const cx = w / 2
+          const cy = h / 2
+          if (outline && outline > 0) {
+            ctx.lineWidth = outline
+            ctx.strokeStyle = opts.outlineColor || '#000'
+            ctx.strokeText(text, cx, cy)
+          }
+          ctx.fillStyle = opts.fillColor || '#fff'
+          ctx.fillText(text, cx, cy)
+          // return the canvas element itself (Cesium accepts HTMLCanvasElement)
+          return canvas
+        }
+
         data.features.forEach((f) => {
           try {
             const geom = f.geometry
@@ -186,23 +233,41 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
             const props = f.properties || {}
             const labelText = props.NAME || props.NAME_LONG || props.ADMIN || props.name || props.country || props.NAME_EN || props.Name || ''
             if (!labelText) return
-            const ent = viewer.entities.add({
-              position: Cesium.Cartesian3.fromDegrees(Number(c.lon), Number(c.lat), 0.0),
-              label: {
-                text: String(labelText),
-                font: 'bold 14px Arial',
-                fillColor: Cesium.Color.WHITE,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 2,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                pixelOffset: new Cesium.Cartesian2(0, -12),
-                // Make labels visible at a much wider range so they appear at global zoom
-                // Initial view altitude is ~22e6, so ensure far distance is larger than that.
-                scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 5e7, 0.0),
-                showBackground: false
-              }
-            })
-            countryLabelEntities.push(ent)
+
+            try {
+              const lon = Number(c.lon); const lat = Number(c.lat)
+              const position = Cesium.Cartesian3.fromDegrees(lon, lat, 1000.0) // small offset above surface
+              // compute surface normal (direction from ellipsoid center)
+              const surfacePos = Cesium.Cartesian3.fromDegrees(lon, lat, 0.0)
+              const normal = Cesium.Cartesian3.normalize(surfacePos, new Cesium.Cartesian3())
+
+              const img = makeLabelImage(String(labelText), { fontSize: 16, paddingX: 8, paddingY: 4, outlineWidth: 3, outlineColor: '#000', fillColor: '#FFFFFF', background: null })
+              if (!img) return
+
+              // verify image is either a canvas element or a string data URL
+              if (!(typeof img === 'string' || (typeof img === 'object' && typeof img.getContext === 'function'))) return
+
+              const ent = viewer.entities.add({
+                position: position,
+                billboard: {
+                  image: img,
+                  verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                  horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                  scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 5e7, 0.0),
+                  // do not use alignedAxis; we'll set entity orientation so the billboard is fixed to the local surface frame
+                  heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+                },
+                properties: props
+              })
+              try {
+                // compute east-north-up fixed frame at the surface position and extract rotation to quaternion
+                const enuMat = Cesium.Transforms.eastNorthUpToFixedFrame(surfacePos)
+                const rotMat = Cesium.Matrix4.getRotation(enuMat, new Cesium.Matrix3())
+                const q = Cesium.Quaternion.fromRotationMatrix(rotMat)
+                ent.orientation = q
+              } catch (e) { /* if orientation fails, ignore and keep default */ }
+              countryLabelEntities.push(ent)
+            } catch (e) { void e }
           } catch (e) { void e }
         })
       } catch (e) { void e }
