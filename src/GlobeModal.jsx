@@ -1,5 +1,7 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import GlobeCesium from './GlobeCesiumClean'
+import Plot from 'react-plotly.js'
+import { supabase } from './supabaseClient'
 
 export default function GlobeModal({ open, onClose, selectedSNo }) {
   const [layer, setLayer] = useState('gibs') // 'gibs' | 'osm'
@@ -11,6 +13,67 @@ export default function GlobeModal({ open, onClose, selectedSNo }) {
   const [selectedSampleDetails, setSelectedSampleDetails] = useState(null)
   // stable handler for marker clicks
   const handleMarkerClick = useCallback((props) => setSelectedSampleDetails(props), [])
+
+  const [selectedSampleRow, setSelectedSampleRow] = useState(null)
+  const [sampleLoading, setSampleLoading] = useState(false)
+
+  // helper: parse numeric arrays (few variants tolerated)
+  const toNumArray = (val) => {
+    if (!val && val !== 0) return []
+    if (Array.isArray(val)) return val.map(Number).filter(n => !Number.isNaN(n))
+    if (typeof val === 'number') return [val]
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val)
+        if (Array.isArray(parsed)) return parsed.map(Number).filter(n => !Number.isNaN(n))
+      } catch (e) { void e }
+      const matches = val.match(/-?\d+\.?\d*(?:e[+-]?\d+)?/ig)
+      if (matches) return matches.map(Number).filter(n => !Number.isNaN(n))
+      return val.replace(/^\[|\]$/g, '').split(/[,\s]+/).filter(Boolean).map(Number).filter(n => !Number.isNaN(n))
+    }
+    return []
+  }
+
+  // fetch full row (including spectral arrays) when a marker is clicked
+  useEffect(() => {
+    let cancelled = false
+    const fetchRow = async () => {
+      if (!selectedSampleDetails) { setSelectedSampleRow(null); return }
+      setSampleLoading(true)
+      try {
+        const sNo = selectedSampleDetails?.['S.No'] ?? selectedSampleDetails?.sno ?? selectedSampleDetails?.id
+        if (sNo == null || sNo === '') { setSelectedSampleRow(null); setSampleLoading(false); return }
+        // query by S.No — column name contains a dot in some schemas; supabase-js accepts quoted identifiers in select but eq should work with the raw key
+        // attempt a robust query for a column named `S.No` by using a quoted filter name
+        // this ensures the REST URL contains the quoted identifier ("S.No") instead of an invalid key
+        let rowData = null
+        try {
+          const resp = await supabase.from('test').select('*').filter('"S.No"', 'eq', String(sNo)).single()
+          if (resp && resp.data) rowData = resp.data
+          else if (resp && resp.error) throw resp.error
+        } catch (innerErr) {
+          // fallback: try common alternative column names
+          try {
+            const alt = await supabase.from('test').select('*').eq('sno', String(sNo)).single()
+            if (alt && alt.data) rowData = alt.data
+            else if (alt && alt.error) throw alt.error
+          } catch (altErr) {
+            try {
+              const alt2 = await supabase.from('test').select('*').eq('id', String(sNo)).single()
+              if (alt2 && alt2.data) rowData = alt2.data
+              else rowData = null
+            } catch (alt2Err) {
+              rowData = null
+            }
+          }
+        }
+        if (!cancelled) setSelectedSampleRow(rowData)
+      } catch (e) { console.warn('Failed to fetch sample row', e); if (!cancelled) setSelectedSampleRow(null) }
+      setSampleLoading(false)
+    }
+    fetchRow()
+    return () => { cancelled = true }
+  }, [selectedSampleDetails])
 
   const formatVal = (v) => {
     try {
@@ -128,6 +191,42 @@ export default function GlobeModal({ open, onClose, selectedSNo }) {
                 {/* only show the three requested fields */}
                 {/* geo_tag may be a string or JSON string */}
                 <div style={{ marginTop: 6 }}><strong>geo_tag:</strong> {formatVal(selectedSampleDetails?.geo_tag)}</div>
+                {/* plot: show spectra if available in fetched row */}
+                <div style={{ marginTop: 10 }}>
+                  {sampleLoading && <div style={{ marginTop: 6, fontSize: 13 }}>Loading plot…</div>}
+                  {!sampleLoading && selectedSampleRow && (
+                    (() => {
+                      // try a few common column names used in this app
+                      const xCandidates = ['Shift x axis', 'shift_x_axis', 'Shift (X)', 'x', 'shift']
+                      const yCandidates = ['Intensity y axis', 'intensity_y_axis', 'Intensity (Y)', 'y', 'intensity']
+                      let x = []
+                      let y = []
+                      for (const k of xCandidates) { if (!x.length && selectedSampleRow[k] !== undefined) x = toNumArray(selectedSampleRow[k]) }
+                      for (const k of yCandidates) { if (!y.length && selectedSampleRow[k] !== undefined) y = toNumArray(selectedSampleRow[k]) }
+                      const hasData = x.length > 0 && y.length > 0
+                      if (!hasData) return <div style={{ fontSize: 13, marginTop: 6 }}>No spectral data available for this sample.</div>
+                      return (
+                        <div style={{ width: 420, maxWidth: '100%', marginTop: 6 }}>
+                          <Plot
+                            data={[
+                              { x: x, y: y, type: 'scatter', mode: 'lines', line: { color: '#caa6ff', width: 2 }, name: 'Spectra' }
+                            ]}
+                            layout={{
+                              margin: { t: 8, b: 32, l: 40, r: 8 },
+                              height: 220,
+                              paper_bgcolor: 'rgba(0,0,0,0)',
+                              plot_bgcolor: 'rgba(0,0,0,0)',
+                              xaxis: { title: 'Shift', automargin: true },
+                              yaxis: { title: 'Intensity', automargin: true }
+                            }}
+                            config={{ displayModeBar: false, responsive: true }}
+                            style={{ width: '100%', height: 220 }}
+                          />
+                        </div>
+                      )
+                    })()
+                  )}
+                </div>
               </div>
             </div>
           </div>
