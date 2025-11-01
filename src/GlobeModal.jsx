@@ -205,19 +205,23 @@ export default function GlobeModal({ open, onClose, selectedSNo }) {
                       for (const k of yCandidates) { if (!y.length && selectedSampleRow[k] !== undefined) y = toNumArray(selectedSampleRow[k]) }
                       const hasData = x.length > 0 && y.length > 0
                       if (!hasData) return <div style={{ fontSize: 13, marginTop: 6 }}>No spectral data available for this sample.</div>
+                      // choose plot colors based on selected basemap layer
+                      const plotLineColor = (layer === 'osm') ? '#4B0082' : '#caa6ff' // dark purple for street
+                      const plotBg = (layer === 'gibs') ? '#000000' : 'rgba(0,0,0,0)' // black plot background for satellite
+                      const axisColor = (layer === 'gibs') ? '#ffffff' : '#111111'
                       return (
                         <div style={{ width: 420, maxWidth: '100%', marginTop: 6 }}>
                           <Plot
                             data={[
-                              { x: x, y: y, type: 'scatter', mode: 'lines', line: { color: '#caa6ff', width: 2 }, name: 'Spectra' }
+                              { x: x, y: y, type: 'scatter', mode: 'lines', line: { color: plotLineColor, width: 2 }, name: 'Spectra' }
                             ]}
                             layout={{
                               margin: { t: 8, b: 32, l: 40, r: 8 },
                               height: 220,
                               paper_bgcolor: 'rgba(0,0,0,0)',
-                              plot_bgcolor: 'rgba(0,0,0,0)',
-                              xaxis: { title: 'Shift', automargin: true },
-                              yaxis: { title: 'Intensity', automargin: true }
+                              plot_bgcolor: plotBg,
+                              xaxis: { title: { text: 'Shift', font: { color: axisColor } }, tickfont: { color: axisColor }, automargin: true },
+                              yaxis: { title: { text: 'Intensity', font: { color: axisColor } }, tickfont: { color: axisColor }, automargin: true }
                             }}
                             config={{ displayModeBar: false, responsive: true }}
                             style={{ width: '100%', height: 220 }}

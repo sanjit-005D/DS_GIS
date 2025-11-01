@@ -177,52 +177,20 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
           } catch (e) { void e; continue }
         }
         if (!data || !data.features) return
-        // Render country labels as canvas billboards aligned to the globe's surface normal.
-        // This makes the text appear tangent to the globe curvature instead of always screen-facing.
-        const makeLabelImage = (text, opts = {}) => {
-          // create a canvas element and draw the text exactly sized to its metrics
-          const fontSize = opts.fontSize || 16
-          const font = `bold ${fontSize}px Arial`
-          const paddingX = opts.paddingX || 8
-          const paddingY = opts.paddingY || 4
-          const bg = opts.background || null
-          const outline = opts.outlineWidth || 2
+        // Remove previously added country label entities (if any) so we re-add fresh labels
+        try {
+          if (Array.isArray(countryLabelEntities) && countryLabelEntities.length && viewer && viewer.entities) {
+            countryLabelEntities.forEach(ent => { try { viewer.entities.remove(ent) } catch (e) { void e } })
+            countryLabelEntities = []
+          }
+        } catch (e) { void e }
 
-          const canvas = document.createElement('canvas')
-          const ctx = canvas.getContext('2d')
-          if (!ctx) return null
-          ctx.font = font
-          // measure text to set canvas size tightly (avoid big transparent boxes)
-          const metrics = ctx.measureText(text)
-          const textWidth = Math.ceil(metrics.width || (text.length * fontSize * 0.6))
-          const textHeight = Math.ceil(fontSize * 1.2)
-          const w = textWidth + paddingX * 2 + outline * 2
-          const h = textHeight + paddingY * 2 + outline * 2
-          // respect devicePixelRatio for crispness but limit excessive sizes
-          const ratio = (typeof window !== 'undefined' && window.devicePixelRatio) ? Math.min(window.devicePixelRatio, 2) : 1
-          canvas.width = Math.max(64, Math.ceil(w * ratio))
-          canvas.height = Math.max(24, Math.ceil(h * ratio))
-          ctx.scale(ratio, ratio)
-          // optional background
-          if (bg) {
-            ctx.fillStyle = bg
-            ctx.fillRect(0, 0, w, h)
-          }
-          ctx.font = font
-          ctx.textBaseline = 'middle'
-          ctx.textAlign = 'center'
-          const cx = w / 2
-          const cy = h / 2
-          if (outline && outline > 0) {
-            ctx.lineWidth = outline
-            ctx.strokeStyle = opts.outlineColor || '#000'
-            ctx.strokeText(text, cx, cy)
-          }
-          ctx.fillStyle = opts.fillColor || '#fff'
-          ctx.fillText(text, cx, cy)
-          // return the canvas element itself (Cesium accepts HTMLCanvasElement)
-          return canvas
-        }
+        // Add fresh label entities using Cesium.Label for crisp text and accurate placement.
+        // Use area-weighted centroids (computeCentroidFromCoords) so labels are placed at sensible interior points.
+  // We'll also aggregate per-continent centroids while we iterate countries so
+  // we can add continent labels (double size) after.
+  // continentAgg stores sums and bbox to help verify/adjust centroid placement
+  const continentAgg = Object.create(null) // { name: { sumLonArea, sumLatArea, sumArea, minLon, maxLon, minLat, maxLat } }
 
         data.features.forEach((f) => {
           try {
@@ -234,42 +202,146 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
             const labelText = props.NAME || props.NAME_LONG || props.ADMIN || props.name || props.country || props.NAME_EN || props.Name || ''
             if (!labelText) return
 
+            const lon = Number(c.lon); const lat = Number(c.lat)
+            if (!Number.isFinite(lon) || !Number.isFinite(lat)) return
+
+            const position = Cesium.Cartesian3.fromDegrees(lon, lat, 0.0)
+            const ent = viewer.entities.add({
+              position,
+              label: {
+                text: String(labelText),
+                font: 'bold 20px Arial',
+                fillColor: Cesium.Color.WHITE,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 3,
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                pixelOffset: new Cesium.Cartesian2(0, -8),
+                scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 5e7, 0.0),
+                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+              },
+              properties: props
+            })
+            countryLabelEntities.push(ent)
+            // compute an approximate polygon area for weighting continent centroid and bbox
             try {
-              const lon = Number(c.lon); const lat = Number(c.lat)
-              const position = Cesium.Cartesian3.fromDegrees(lon, lat, 1000.0) // small offset above surface
-              // compute surface normal (direction from ellipsoid center)
-              const surfacePos = Cesium.Cartesian3.fromDegrees(lon, lat, 0.0)
-              const normal = Cesium.Cartesian3.normalize(surfacePos, new Cesium.Cartesian3())
+              const computeGeomArea = (geom) => {
+                try {
+                  if (!geom) return 0
+                  const type = geom.type
+                  const signedAreaOfRing = (ring) => {
+                    if (!ring || ring.length < 3) return 0
+                    let A = 0
+                    for (let i = 0; i < ring.length - 1; i++) {
+                      const x0 = Number(ring[i][0]), y0 = Number(ring[i][1])
+                      const x1 = Number(ring[i+1][0]), y1 = Number(ring[i+1][1])
+                      if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) continue
+                      A += x0 * y1 - x1 * y0
+                    }
+                    return A / 2
+                  }
+                  if (type === 'Polygon') {
+                    const outer = geom.coordinates && geom.coordinates[0]
+                    return Math.abs(signedAreaOfRing(outer))
+                  }
+                  if (type === 'MultiPolygon') {
+                    let sum = 0
+                    const polys = geom.coordinates || []
+                    for (let p = 0; p < polys.length; p++) {
+                      const ring = polys[p] && polys[p][0]
+                      if (!ring) continue
+                      sum += Math.abs(signedAreaOfRing(ring))
+                    }
+                    return sum
+                  }
+                  return 0
+                } catch (e) { return 0 }
+              }
 
-              const img = makeLabelImage(String(labelText), { fontSize: 16, paddingX: 8, paddingY: 4, outlineWidth: 3, outlineColor: '#000', fillColor: '#FFFFFF', background: null })
-              if (!img) return
+              const area = computeGeomArea(geom) || 0.000001
+              const continentName = props.CONTINENT || props.continent || props.REGION_UN || props.REGION || props.region || 'Unknown'
+              const agg = continentAgg[continentName] || { sumLonArea: 0, sumLatArea: 0, sumArea: 0, minLon: 180, maxLon: -180, minLat: 90, maxLat: -90 }
 
-              // verify image is either a canvas element or a string data URL
-              if (!(typeof img === 'string' || (typeof img === 'object' && typeof img.getContext === 'function'))) return
+              // normalize lon into [-180,180]
+              let nl = lon
+              try { nl = ((nl + 180) % 360 + 360) % 360 - 180 } catch (e) { /* fallback */ }
 
-              const ent = viewer.entities.add({
-                position: position,
-                billboard: {
-                  image: img,
-                  verticalOrigin: Cesium.VerticalOrigin.CENTER,
-                  horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-                  scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 5e7, 0.0),
-                  // do not use alignedAxis; we'll set entity orientation so the billboard is fixed to the local surface frame
-                  heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-                },
-                properties: props
-              })
-              try {
-                // compute east-north-up fixed frame at the surface position and extract rotation to quaternion
-                const enuMat = Cesium.Transforms.eastNorthUpToFixedFrame(surfacePos)
-                const rotMat = Cesium.Matrix4.getRotation(enuMat, new Cesium.Matrix3())
-                const q = Cesium.Quaternion.fromRotationMatrix(rotMat)
-                ent.orientation = q
-              } catch (e) { /* if orientation fails, ignore and keep default */ }
-              countryLabelEntities.push(ent)
+              agg.sumLonArea += nl * area
+              agg.sumLatArea += lat * area
+              agg.sumArea += area
+              if (nl < agg.minLon) agg.minLon = nl
+              if (nl > agg.maxLon) agg.maxLon = nl
+              if (lat < agg.minLat) agg.minLat = lat
+              if (lat > agg.maxLat) agg.maxLat = lat
+              continentAgg[continentName] = agg
             } catch (e) { void e }
           } catch (e) { void e }
         })
+
+        // Now add continent labels at the aggregated, area-weighted centroids
+        try {
+          Object.keys(continentAgg).forEach((contName) => {
+            try {
+              const agg = continentAgg[contName]
+              if (!agg || !agg.sumArea) return
+              const clat = agg.sumLatArea / agg.sumArea
+              const clon = agg.sumLonArea / agg.sumArea
+
+              // Exclude unwanted ocean/sea labels (like "Seven Seas (open ocean)") and Unknown
+              const lc = String(contName || '').toLowerCase()
+              if (!contName || lc === 'unknown' || lc.includes('seven') || lc.includes('sea') || lc.includes('ocean') || lc.includes('open ocean')) return
+
+              let finalLon = clon
+              let finalLat = clat
+
+              // If centroid lies outside aggregated bbox (possible due to dateline wrap), snap to bbox center
+              try {
+                const minLon = agg.minLon
+                const maxLon = agg.maxLon
+                const minLat = agg.minLat
+                const maxLat = agg.maxLat
+                if (Number.isFinite(minLon) && Number.isFinite(maxLon) && (maxLon - minLon) < 350) {
+                  if (finalLon < minLon || finalLon > maxLon) finalLon = (minLon + maxLon) / 2
+                } else if (Number.isFinite(minLon) && Number.isFinite(maxLon) && (maxLon - minLon) >= 350) {
+                  // likely wraps antimeridian - map centroid to bbox in 0..360 space
+                  let adjClon = finalLon
+                  if (adjClon < 0) adjClon += 360
+                  let adjMin = minLon
+                  if (adjMin < 0) adjMin += 360
+                  let adjMax = maxLon
+                  if (adjMax < 0) adjMax += 360
+                  const adjCenter = ((adjMin + adjMax) / 2)
+                  finalLon = adjCenter > 180 ? adjCenter - 360 : adjCenter
+                }
+                if (Number.isFinite(minLat) && Number.isFinite(maxLat)) {
+                  if (finalLat < minLat || finalLat > maxLat) finalLat = (minLat + maxLat) / 2
+                }
+              } catch (e) { void e }
+
+              if (!Number.isFinite(finalLat) || !Number.isFinite(finalLon)) return
+              const centPos = Cesium.Cartesian3.fromDegrees(finalLon, finalLat, 0.0)
+              const centEnt = viewer.entities.add({
+                position: centPos,
+                label: {
+                  text: String(contName),
+                  font: 'bold 40px Arial',
+                  fillColor: Cesium.Color.WHITE,
+                  outlineColor: Cesium.Color.BLACK,
+                  outlineWidth: 4,
+                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                  verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                  horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                  pixelOffset: new Cesium.Cartesian2(0, -14),
+                  scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1e8, 0.0),
+                  heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+                },
+                properties: { continent: contName }
+              })
+              countryLabelEntities.push(centEnt)
+            } catch (e) { void e }
+          })
+        } catch (e) { void e }
       } catch (e) { void e }
     }
 
@@ -419,6 +491,26 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
 
         viewerRef.current = viewer
 
+        // Ensure the Home button returns to our initial view (India + initial altitude)
+        try {
+          try { localStorage.removeItem('globe_home') } catch (e) { void e }
+          const homeDest = Cesium.Cartesian3.fromDegrees(78.9629, 20.5937, 31000000)
+          try {
+            const btn = viewer.container && viewer.container.querySelector && viewer.container.querySelector('.cesium-home-button')
+            if (btn) {
+              const newBtn = btn.cloneNode(true)
+              btn.parentNode.replaceChild(newBtn, btn)
+              newBtn.addEventListener('click', (ev) => {
+                try { ev.preventDefault(); ev.stopPropagation() } catch (e) { void e }
+                try { viewer.camera.flyTo({ destination: homeDest, duration: 1.6 }) } catch (err) { void err }
+              })
+              try { viewer._homeBtn = newBtn } catch (e) { void e }
+              try { viewer._homeDest = homeDest } catch (e) { void e }
+              try { viewer._homeSet = true } catch (e) { void e }
+            }
+          } catch (e) { void e }
+        } catch (e) { void e }
+
         // start periodic camera reporting and enforce minimum altitude
         try {
           const camInterval = setInterval(() => {
@@ -448,7 +540,9 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
           handler.setInputAction((movement) => {
             try {
               const picked = viewer.scene.pick(movement.endPosition)
-              if (Cesium.defined(picked) && picked.id) viewer.container.style.cursor = 'pointer'
+              // Only treat sample entities as interactive. Sample entities have a _sampleProps
+              const isSample = Cesium.defined(picked) && picked.id && (picked.id._sampleProps != null)
+              if (isSample) viewer.container.style.cursor = 'pointer'
               else viewer.container.style.cursor = ''
             } catch (e) { void e }
           }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
@@ -459,40 +553,8 @@ export default function GlobeCesium({ className, selectedLayer = 'gibs', onCamer
               if (Cesium.defined(picked) && picked.id) {
                 try {
                   const ent = picked.id
-                  let props = null
-                  try { props = ent._sampleProps ?? null } catch (e) { void e }
-                  if (!props && ent.properties) {
-                    const p = ent.properties
-                    try {
-                      if (typeof p.getValue === 'function') {
-                        const sNo = (p.getValue('S.No') ?? p.getValue('SNo') ?? p.getValue('id') ?? '')
-                        const name = (p.getValue('Sample name') ?? p.getValue('sample_name') ?? '')
-                        let geo = (p.getValue('geo_tag') ?? p.getValue('geo') ?? null)
-                        try {
-                          if (geo && typeof geo === 'object') {
-                            if (geo.geo_tag) geo = geo.geo_tag
-                            else if (geo.coordinates && Array.isArray(geo.coordinates)) geo = `${geo.coordinates[1]},${geo.coordinates[0]}`
-                            else geo = JSON.stringify(geo)
-                          }
-                          if (typeof geo === 'string') {
-                            const s = geo.trim()
-                            if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
-                              try { const parsed = JSON.parse(s); if (parsed && parsed.geo_tag) geo = parsed.geo_tag } catch (e) { void e }
-                            }
-                          }
-                        } catch (e) { void e }
-                        props = { 'S.No': sNo == null ? '' : String(sNo), 'Sample name': String(name ?? ''), geo_tag: geo == null ? '' : String(geo) }
-                      } else {
-                        const sNo = p['S.No'] ?? p['SNo'] ?? p['id'] ?? ''
-                        const name = p['Sample name'] ?? p['sample_name'] ?? ''
-                        let geo = p['geo_tag'] ?? p['geo'] ?? ''
-                        if (geo && typeof geo === 'object') {
-                          try { geo = geo.geo_tag ?? (geo.coordinates && Array.isArray(geo.coordinates) ? `${geo.coordinates[1]},${geo.coordinates[0]}` : JSON.stringify(geo)) } catch (e) { void e }
-                        }
-                        props = { 'S.No': sNo == null ? '' : String(sNo), 'Sample name': String(name ?? ''), geo_tag: geo == null ? '' : String(geo) }
-                      }
-                    } catch (e) { void e }
-                  }
+                  // Only respond to clicks on sample entities (we attach _sampleProps to them).
+                  const props = ent._sampleProps ?? null
                   if (props && typeof onMarkerClick === 'function') onMarkerClick(props)
                 } catch (e) { void e }
               }
