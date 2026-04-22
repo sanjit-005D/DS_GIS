@@ -1,0 +1,27 @@
+# ================================================================================
+# PYTHON REQUIREMENTS FOR RAMAN SPECTROSCOPY DATABASE TOOLS
+# ================================================================================
+# Installation: pip install -r requirements.txt
+# ================================================================================
+
+# HTTP library for API communication
+requests>=2.31.0
+
+# Data manipulation and CSV reading (for push_data.py)
+pandas>=2.0.0
+
+# ================================================================================
+# BUILT-IN MODULES (No installation needed):
+# - json: JSON parsing and encoding
+# - datetime: Timestamp handling
+# - ast: Python literal evaluation (backup parser)
+# ================================================================================
+
+# OPTIONAL DEPENDENCIES:
+# If you need to work with Excel files instead of CSV:
+# openpyxl>=3.1.0
+# xlrd>=2.0.1
+
+# For enhanced data validation:
+# numpy>=1.24.0
+# ================================================================================
