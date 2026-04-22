@@ -1,10 +1,16 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import MapboxViewer from './MapboxViewerClean'
+import ThreeGlobeViewer from './ThreeGlobe'
 import AveragedSpectrum from './AveragedSpectrum'
 import Plot from 'react-plotly.js'
 import { db } from './apiClient' // Custom API client (eyenetbio database)
 import { computePCAGrouping, computeClusteringGrouping, computeRFGrouping } from './lib/spectralGrouping'
 import { compareGroupingMethods } from './lib/spectralGrouping'
+
+const MAPBOX_TOKEN = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN)
+  ? String(import.meta.env.VITE_MAPBOX_TOKEN).trim()
+  : ''
+const HAS_MAPBOX_TOKEN = Boolean(MAPBOX_TOKEN)
 
 // Left-side controls removed — we'll render a compact basemap selector and samples toggle directly on the map
 
@@ -1148,33 +1154,42 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
           {/* Range controller removed per user request */}
 
           <div className="globe-map" style={{ height: '100vh', position: 'relative' }}>
-            <MapboxViewer
-              className="globe-cs"
-              selectedLayer={layer}
-              showLabels={showLabels}
-              showSamples={showSamples}
-        homeRequest={homeRequestCounter}
-        integrals={integralsMap}
-        integralsMeta={integralsMeta}
-              selectedPalette={selectedPalette}
+            {HAS_MAPBOX_TOKEN ? (
+              <MapboxViewer
+                className="globe-cs"
+                selectedLayer={layer}
+                showLabels={showLabels}
+                showSamples={showSamples}
+                homeRequest={homeRequestCounter}
+                integrals={integralsMap}
+                integralsMeta={integralsMeta}
+                selectedPalette={selectedPalette}
                 surfaceOverlayEnabled={layer === 'light' && surfaceOverlayEnabled}
-              contourOverlayEnabled={layer === 'light' && contourOverlayEnabled}
-              spreadDiameterKm={spreadDiameterKm}
-              overlayOpacity={overlayOpacity}
-              groupingEnabled={isLightLayer && groupingEnabled}
-              groupingMethod={isLightLayer ? groupingMethod : 'pca'}
-              groupAssignments={isLightLayer ? groupAssignments : {}}
-              groupColors={GROUP_COLORS}
-              useNormalized={useNormalized}
-              onCameraChange={cameraChangeCallback}
-              onMarkerClick={handleMarkerClick}
-              selectedTable={selectedTable}
-              selectedIdColumn={selectedIdColumn}
-              spectralRanges={spectralRanges}
-              setSpectralRanges={setSpectralRanges}
-              activeRangeIndex={activeRangeIndex}
-              setActiveRangeIndex={setActiveRangeIndex}
-          />
+                contourOverlayEnabled={layer === 'light' && contourOverlayEnabled}
+                spreadDiameterKm={spreadDiameterKm}
+                overlayOpacity={overlayOpacity}
+                groupingEnabled={isLightLayer && groupingEnabled}
+                groupingMethod={isLightLayer ? groupingMethod : 'pca'}
+                groupAssignments={isLightLayer ? groupAssignments : {}}
+                groupColors={GROUP_COLORS}
+                useNormalized={useNormalized}
+                onCameraChange={cameraChangeCallback}
+                onMarkerClick={handleMarkerClick}
+                selectedTable={selectedTable}
+                selectedIdColumn={selectedIdColumn}
+                spectralRanges={spectralRanges}
+                setSpectralRanges={setSpectralRanges}
+                activeRangeIndex={activeRangeIndex}
+                setActiveRangeIndex={setActiveRangeIndex}
+              />
+            ) : (
+              <ThreeGlobeViewer
+                className="globe-cs"
+                onCameraChange={cameraChangeCallback}
+                onMarkerClick={handleMarkerClick}
+                showSamples={showSamples}
+              />
+            )}
           {/* Home button placed under Mapbox controls (top-right). Uses inline SVG and triggers homeRequestCounter. */}
           <div style={{ position: 'absolute', right: 5, top: 132, zIndex: 1260 }}>
             <button
