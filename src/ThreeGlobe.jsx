@@ -17,16 +17,18 @@ export default function ThreeGlobeViewer({ className, onCameraChange, onMarkerCl
       // Dynamically import three-globe from unpkg as an ESM module to avoid Vite
       // resolving its internal optional three subpath imports during dev prebundle.
       let ThreeGlobeModule
+      let useFallbackGlobe = false
       try {
         ThreeGlobeModule = await import('https://unpkg.com/three-globe?module')
       } catch (e) {
-        // console.error('Failed to load three-globe from CDN', e)
-        return
+        // If CDN import fails in hosted environments, render a native Three.js globe instead.
+        useFallbackGlobe = true
       }
       const ThreeGlobeCtor = ThreeGlobeModule?.default || ThreeGlobeModule
 
       // Scene
       const scene = new THREE.Scene()
+      scene.background = new THREE.Color(0x0b1f33)
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
       renderer.setSize(el.clientWidth, el.clientHeight)
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -51,9 +53,21 @@ export default function ThreeGlobeViewer({ className, onCameraChange, onMarkerCl
       scene.add(dir)
 
       // Globe
-      const globe = new ThreeGlobeCtor({ waitForGlobeReady: true })
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-        .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+      let globe
+      if (!useFallbackGlobe && ThreeGlobeCtor) {
+        globe = new ThreeGlobeCtor({ waitForGlobeReady: true })
+          .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+          .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+      } else {
+        const globeGeometry = new THREE.SphereGeometry(100, 64, 64)
+        const globeMaterial = new THREE.MeshPhongMaterial({
+          color: 0x2d6aa6,
+          shininess: 14,
+          emissive: 0x0a2238,
+          emissiveIntensity: 0.32
+        })
+        globe = new THREE.Mesh(globeGeometry, globeMaterial)
+      }
 
       globeRef.current = globe
       scene.add(globe)
@@ -78,7 +92,8 @@ export default function ThreeGlobeViewer({ className, onCameraChange, onMarkerCl
         mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1
         mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1
         raycaster.setFromCamera(mouse, camera)
-        const intersects = raycaster.intersectObject(globe.object3D, true)
+        const target = globe.object3D || globe
+        const intersects = raycaster.intersectObject(target, true)
         if (intersects.length && typeof onMarkerClick === 'function') {
           onMarkerClick({ point: intersects[0].point, object: intersects[0].object })
         }
@@ -88,6 +103,9 @@ export default function ThreeGlobeViewer({ className, onCameraChange, onMarkerCl
       // Animation loop
       const animate = () => {
         if (!mounted) return
+        if (globe && !globe.object3D) {
+          globe.rotation.y += 0.0015
+        }
         controls.update()
         renderer.render(scene, camera)
         requestAnimationFrame(animate)
