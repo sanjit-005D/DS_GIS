@@ -12,10 +12,10 @@ export default defineConfig({
   resolve: {
     // Use explicit alias objects so subpath imports like 'three/tsl' are resolved correctly
     alias: [
-      // force all imports of 'three' to the single node_modules copy to avoid duplicate runtimes
-      { find: 'three', replacement: path.resolve(__dirname, 'node_modules/three') },
       { find: 'three/webgpu', replacement: path.resolve(__dirname, 'src/shims/three-webgpu.js') },
       { find: 'three/tsl', replacement: path.resolve(__dirname, 'src/shims/three-tsl.js') },
+      // force all imports of 'three' to the single node_modules copy to avoid duplicate runtimes
+      { find: 'three', replacement: path.resolve(__dirname, 'node_modules/three') },
     ]
   },
   optimizeDeps: {
