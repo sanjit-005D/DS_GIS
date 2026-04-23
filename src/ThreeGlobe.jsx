@@ -1,8 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import ThreeGlobeCtor from 'three-globe'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
-// Load three-globe dynamically at runtime from CDN to avoid Vite import-analysis
-// and optional three/webgpu / three/tsl subpath issues during bundling.
 
 export default function ThreeGlobeViewer({ className, onCameraChange, onMarkerClick, showSamples: _showSamples = true }) {
   const containerRef = useRef(null)
@@ -13,18 +12,7 @@ export default function ThreeGlobeViewer({ className, onCameraChange, onMarkerCl
     const setup = async () => {
       const el = containerRef.current
       if (!el || !mounted) return
-
-      // Dynamically import three-globe from unpkg as an ESM module to avoid Vite
-      // resolving its internal optional three subpath imports during dev prebundle.
-      let ThreeGlobeModule
-      let useFallbackGlobe = false
-      try {
-        ThreeGlobeModule = await import('https://unpkg.com/three-globe?module')
-      } catch (e) {
-        // If CDN import fails in hosted environments, render a native Three.js globe instead.
-        useFallbackGlobe = true
-      }
-      const ThreeGlobeCtor = ThreeGlobeModule?.default || ThreeGlobeModule
+      const useFallbackGlobe = !ThreeGlobeCtor
 
       // Scene
       const scene = new THREE.Scene()
@@ -53,12 +41,7 @@ export default function ThreeGlobeViewer({ className, onCameraChange, onMarkerCl
       scene.add(dir)
 
       // Globe
-      let globe
-      if (!useFallbackGlobe && ThreeGlobeCtor) {
-        globe = new ThreeGlobeCtor({ waitForGlobeReady: true })
-          .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-          .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
-      } else {
+      const makeFallbackSphere = () => {
         const globeGeometry = new THREE.SphereGeometry(100, 64, 64)
         const globeMaterial = new THREE.MeshPhongMaterial({
           color: 0x2d6aa6,
@@ -66,7 +49,36 @@ export default function ThreeGlobeViewer({ className, onCameraChange, onMarkerCl
           emissive: 0x0a2238,
           emissiveIntensity: 0.32
         })
-        globe = new THREE.Mesh(globeGeometry, globeMaterial)
+        const mesh = new THREE.Mesh(globeGeometry, globeMaterial)
+        try {
+          const loader = new THREE.TextureLoader()
+          loader.load(
+            'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
+            (texture) => {
+              globeMaterial.map = texture
+              globeMaterial.color.setHex(0xffffff)
+              globeMaterial.needsUpdate = true
+            },
+            undefined,
+            () => {
+              // keep solid-color fallback if texture fetch fails
+            }
+          )
+        } catch (e) { void e }
+        return mesh
+      }
+
+      let globe
+      if (!useFallbackGlobe && ThreeGlobeCtor) {
+        try {
+          globe = new ThreeGlobeCtor({ waitForGlobeReady: true })
+            .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+            .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+        } catch (e) {
+          globe = makeFallbackSphere()
+        }
+      } else {
+        globe = makeFallbackSphere()
       }
 
       globeRef.current = globe
