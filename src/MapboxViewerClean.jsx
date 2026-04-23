@@ -70,7 +70,7 @@ function getStyleByLayer(layer) {
 }
 
 function getMapProjection() {
-  return HAS_MAPBOX_TOKEN ? 'globe' : 'mercator'
+  return 'globe'
 }
 
 function applyMapBackdrop(map) {
@@ -97,7 +97,16 @@ function applyMapBackdrop(map) {
       return
     }
 
-    if (typeof map.setFog === 'function') map.setFog(null)
+    if (typeof map.setFog === 'function') {
+      map.setFog({
+        'range': [0.6, 8],
+        'horizon-blend': 0,
+        'color': 'rgba(255,255,255,0)',
+        'high-color': 'rgba(255,255,255,0)',
+        'space-color': 'rgb(11, 11, 25)',
+        'star-intensity': 0.6
+      })
+    }
     if (typeof map.setLight === 'function') {
       map.setLight({
         anchor: 'viewport',
