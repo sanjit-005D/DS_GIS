@@ -461,6 +461,34 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
   useEffect(() => { groupAssignmentsRef.current = groupAssignments }, [groupAssignments])
   useEffect(() => { groupColorsRef.current = groupColors }, [groupColors])
 
+  // Update sample feature properties (intVal/intNorm) when integrals or integralsMeta change
+  useEffect(() => {
+    try {
+      const map = mapRef.current
+      const geo = lastSamplesGeoRef.current
+      if (!map || !map.getSource || !geo || !Array.isArray(geo.features) || !geo.features.length) return
+      const min = integralsMeta && Number.isFinite(Number(integralsMeta.min)) ? Number(integralsMeta.min) : null
+      const max = integralsMeta && Number.isFinite(Number(integralsMeta.max)) ? Number(integralsMeta.max) : null
+      let updated = false
+      for (const f of geo.features) {
+        const fid = String((f && f.properties && f.properties.id) || '')
+        const intVal = integrals && integrals[fid] !== undefined ? Number(integrals[fid]) : null
+        const intNorm = (intVal !== null && min !== null && max !== null && max > min)
+          ? Math.max(0, Math.min(1, (Number(intVal) - min) / (max - min)))
+          : 0
+        if (!f.properties) f.properties = {}
+        if (f.properties.intVal !== intVal || f.properties.intNorm !== intNorm) {
+          f.properties.intVal = intVal
+          f.properties.intNorm = intNorm
+          updated = true
+        }
+      }
+      if (updated && map.getSource('samples')) {
+        try { map.getSource('samples').setData(geo) } catch (e) { void e }
+      }
+    } catch (e) { void e }
+  }, [integrals, integralsMeta, isGroupingRenderable, groupAssignments, groupColors])
+
   
 
   // helper to load samples into the map source
