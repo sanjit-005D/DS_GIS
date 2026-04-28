@@ -6,8 +6,6 @@ import { db } from './apiClient' // Custom API client (eyenetbio database)
 import { computePCAGrouping, computeClusteringGrouping, computeRFGrouping } from './lib/spectralGrouping'
 import { compareGroupingMethods } from './lib/spectralGrouping'
 
-const ENABLE_LIGHT_MAP_UPGRADES = false
-
 // Left-side controls removed — we'll render a compact basemap selector and samples toggle directly on the map
 
 export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable, selectedIdColumn, spectralRanges, setSpectralRanges, activeRangeIndex, setActiveRangeIndex }) {
@@ -1160,10 +1158,10 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
               integralsMeta={integralsMeta}
               selectedPalette={selectedPalette}
               surfaceOverlayEnabled={layer === 'light' && surfaceOverlayEnabled}
-              contourOverlayEnabled={false}
+              contourOverlayEnabled={layer === 'light' && contourOverlayEnabled}
               spreadDiameterKm={spreadDiameterKm}
               overlayOpacity={overlayOpacity}
-              groupingEnabled={false}
+              groupingEnabled={isLightLayer && groupingEnabled}
               groupingMethod={isLightLayer ? groupingMethod : 'pca'}
               groupAssignments={isLightLayer ? groupAssignments : {}}
               groupColors={GROUP_COLORS}
@@ -1227,7 +1225,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
             </div>
           </div>
 
-          {ENABLE_LIGHT_MAP_UPGRADES && isLightLayer && groupingEnabled && (groupingMethod === 'pca' || groupingMethod === 'clustering' || groupingMethod === 'rf') && (
+          {isLightLayer && groupingEnabled && (groupingMethod === 'pca' || groupingMethod === 'clustering' || groupingMethod === 'rf') && (
             <div
               ref={pcaPanelRef}
               onPointerDown={onPcaPanelPointerDown}
@@ -1447,7 +1445,6 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                         type="checkbox"
                         checked={groupingEnabled}
                         onChange={(e) => setGroupingEnabled(e.target.checked)}
-                        disabled={!ENABLE_LIGHT_MAP_UPGRADES}
                         style={{ width: 14, height: 14 }}
                       />
                       <span>Grouping Methods</span>
@@ -1463,7 +1460,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     </select>
                   </div>
 
-                  {ENABLE_LIGHT_MAP_UPGRADES && groupingEnabled && (
+                  {groupingEnabled && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <label style={{ fontSize: 11, color: textColor }}>Group Palette</label>
                       <select
@@ -1478,7 +1475,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     </div>
                   )}
 
-                  {ENABLE_LIGHT_MAP_UPGRADES && groupingEnabled && (
+                  {groupingEnabled && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       {groupingMethod === 'pca' && (
                         <>
@@ -1503,7 +1500,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     </div>
                   )}
 
-                  {ENABLE_LIGHT_MAP_UPGRADES && groupingEnabled && groupingMethod === 'clustering' && (
+                  {groupingEnabled && groupingMethod === 'clustering' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <label style={{ fontSize: 11, color: textColor }}>Distance</label>
                       <select value={clusteringDistance} onChange={(e) => setClusteringDistance(e.target.value)} style={{ fontSize: 10, padding: '2px 5px', borderRadius: 4 }}>
@@ -1518,7 +1515,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     </div>
                   )}
 
-                  {ENABLE_LIGHT_MAP_UPGRADES && groupingEnabled && groupingMethod === 'rf' && (
+                  {groupingEnabled && groupingMethod === 'rf' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <label style={{ fontSize: 11, color: textColor }}>Trees</label>
                       <input
@@ -1542,7 +1539,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     </div>
                   )}
 
-                  {ENABLE_LIGHT_MAP_UPGRADES && groupingEnabled && (
+                  {groupingEnabled && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <label style={{ fontSize: 11, color: textColor }}>Seed</label>
                       <input
@@ -1559,7 +1556,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     </div>
                   )}
 
-                  {ENABLE_LIGHT_MAP_UPGRADES && groupingEnabled && !isLightLayer && methodComparison?.methods?.length > 0 && (
+                  {groupingEnabled && !isLightLayer && methodComparison?.methods?.length > 0 && (
                     <div style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.12)', background: 'rgba(255,255,255,0.55)', fontSize: 10 }}>
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>Method Comparison</div>
                       {methodComparison.methods.map((m) => (
@@ -1609,9 +1606,8 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: textColor, whiteSpace: 'nowrap' }}>
                       <input
                         type="checkbox"
-                        checked={false}
+                        checked={contourOverlayEnabled}
                         onChange={(e) => setContourOverlayEnabled(e.target.checked)}
-                        disabled={!ENABLE_LIGHT_MAP_UPGRADES}
                         style={{ width: 14, height: 14 }}
                       />
                       <span>Contours</span>
@@ -1646,7 +1642,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     <span style={{ fontSize: 11, color: textColor, minWidth: 42 }}>{Math.round(overlayOpacity * 100)}%</span>
                   </div>
 
-                  {ENABLE_LIGHT_MAP_UPGRADES && groupingEnabled && methodComparison?.methods?.length > 0 && (
+                  {groupingEnabled && methodComparison?.methods?.length > 0 && (
                     <div style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.12)', background: 'rgba(255,255,255,0.55)', fontSize: 10, lineHeight: 1.2, marginTop: 2 }}>
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>Method Comparison</div>
                       {methodComparison.methods.map((m) => (
@@ -2262,7 +2258,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
         </div>
       )}
 
-      {ENABLE_LIGHT_MAP_UPGRADES && isLightLayer && groupingEnabled && groupAveragedTraces.length > 0 && (
+      {isLightLayer && groupingEnabled && groupAveragedTraces.length > 0 && (
         <div
           onPointerDown={onGroupAvgPopupPointerDown}
           style={{
@@ -2323,7 +2319,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
         </div>
       )}
 
-      {ENABLE_LIGHT_MAP_UPGRADES && isLightLayer && groupingEnabled && groupRepresentation && (
+      {isLightLayer && groupingEnabled && groupRepresentation && (
         <div
           onPointerDown={onGroupRepPanelPointerDown}
           style={{
