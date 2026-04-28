@@ -6,7 +6,7 @@ import { db } from './apiClient' // Custom API client (eyenetbio database)
 import { computePCAGrouping, computeClusteringGrouping, computeRFGrouping } from './lib/spectralGrouping'
 import { compareGroupingMethods } from './lib/spectralGrouping'
 
-const ENABLE_LIGHT_MAP_UPGRADES = false
+const ENABLE_LIGHT_MAP_UPGRADES = true
 
 // Left-side controls removed — we'll render a compact basemap selector and samples toggle directly on the map
 
@@ -1160,10 +1160,10 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
               integralsMeta={integralsMeta}
               selectedPalette={selectedPalette}
               surfaceOverlayEnabled={layer === 'light' && surfaceOverlayEnabled}
-              contourOverlayEnabled={false}
+              contourOverlayEnabled={layer === 'light' && contourOverlayEnabled}
               spreadDiameterKm={spreadDiameterKm}
               overlayOpacity={overlayOpacity}
-              groupingEnabled={false}
+              groupingEnabled={isLightLayer && groupingEnabled}
               groupingMethod={isLightLayer ? groupingMethod : 'pca'}
               groupAssignments={isLightLayer ? groupAssignments : {}}
               groupColors={GROUP_COLORS}
@@ -1368,10 +1368,8 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
           <div style={{ position: 'absolute', left: 12, bottom: 8, zIndex: 2, background: 'transparent', border: 'none', borderRadius: 8, padding: '8px 10px', boxShadow: 'none', backdropFilter: 'none' }}>
             <div style={{ width: 390, overflow: 'hidden' }}>
               <AveragedSpectrum ref={avgRef} selectedTable={selectedTable} selectedIdColumn={selectedIdColumn} controlBg={controlBg} textColor={textColor} useNormalized={useNormalized} colorMappingMode={colorMappingMode} integrationRangeLow={colorMappingMode === 'integration' ? integrationLow : cursorX1} integrationRangeHigh={colorMappingMode === 'integration' ? integrationHigh : cursorX2} onRangeChange={(info) => {
-                if (colorMappingMode === 'cursor') {
-                  setIntegralsMap(info.integrals || {})
-                  setIntegralsMeta({ min: info.min || 0, max: info.max || 0, x1: info.x1 || 0, x2: info.x2 || 0 })
-                }
+                setIntegralsMap(info.integrals || {})
+                setIntegralsMeta({ min: info.min || 0, max: info.max || 0, x1: info.x1 || 0, x2: info.x2 || 0 })
                 if (info && info.x1 !== undefined && info.x2 !== undefined) {
                   try {
                     const range = avgRef?.current?.getWavelengthRange?.()
@@ -1447,7 +1445,6 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                         type="checkbox"
                         checked={groupingEnabled}
                         onChange={(e) => setGroupingEnabled(e.target.checked)}
-                        disabled={!ENABLE_LIGHT_MAP_UPGRADES}
                         style={{ width: 14, height: 14 }}
                       />
                       <span>Grouping Methods</span>
@@ -1609,9 +1606,8 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: textColor, whiteSpace: 'nowrap' }}>
                       <input
                         type="checkbox"
-                        checked={false}
+                        checked={contourOverlayEnabled}
                         onChange={(e) => setContourOverlayEnabled(e.target.checked)}
-                        disabled={!ENABLE_LIGHT_MAP_UPGRADES}
                         style={{ width: 14, height: 14 }}
                       />
                       <span>Contours</span>
@@ -2220,14 +2216,11 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
               {avgPanelMinimized ? '▢' : '▁'}
             </button>
           </div>
-          {!avgPanelMinimized && (
-            <div style={{ width: '100%', overflow: 'hidden' }}>
+          <div style={{ width: '100%', overflow: 'hidden', display: avgPanelMinimized ? 'none' : 'block' }}>
               <AveragedSpectrum ref={avgRef} selectedTable={selectedTable} selectedIdColumn={selectedIdColumn} controlBg={controlBg} textColor={textColor} useNormalized={useNormalized} colorMappingMode={colorMappingMode} integrationRangeLow={colorMappingMode === 'integration' ? integrationLow : cursorX1} integrationRangeHigh={colorMappingMode === 'integration' ? integrationHigh : cursorX2} onRangeChange={(info) => {
-              // This is the cursor module data (X1/X2 + cursor)
-              if (colorMappingMode === 'cursor') {
-                setIntegralsMap(info.integrals || {})
-                setIntegralsMeta({ min: info.min || 0, max: info.max || 0, x1: info.x1 || 0, x2: info.x2 || 0 })
-              }
+              // Update marker/color spread data from whichever mode emitted the change.
+              setIntegralsMap(info.integrals || {})
+              setIntegralsMeta({ min: info.min || 0, max: info.max || 0, x1: info.x1 || 0, x2: info.x2 || 0 })
               // Initialize integration module domain from full wavelength range
               if (info && info.x1 !== undefined && info.x2 !== undefined) {
                 try {
@@ -2251,8 +2244,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                 setPaletteHigh(info.x2)
               }
               }} inline={true} />
-            </div>
-          )}
+          </div>
           <div
             className="popup-resize-handle"
             aria-hidden={avgPanelMinimized}
