@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { db, isApiAvailable, setApiAvailable } from './apiClient'
+import { generateContours } from './lib/contourGenerator'
 
 // Clean, minimal Mapbox viewer. Kept intentionally small to avoid complex nested blocks
 // that previously caused parser issues with the transform pipeline.
@@ -334,32 +335,32 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         else map.addLayer(spreadLayer)
       }
 
-      const contourLayerDefs = [
-        { id: 'samples-contour-r1', factor: 0.28, alpha: 0.90 },
-        { id: 'samples-contour-r2', factor: 0.42, alpha: 0.86 },
-        { id: 'samples-contour-r3', factor: 0.56, alpha: 0.82 },
-        { id: 'samples-contour-r4', factor: 0.70, alpha: 0.78 },
-        { id: 'samples-contour-r5', factor: 0.84, alpha: 0.74 },
-        { id: 'samples-contour-r6', factor: 1.00, alpha: 0.70 }
-      ]
-      for (const def of contourLayerDefs) {
-        if (!map.getLayer(def.id)) {
-          const layer = {
-            id: def.id,
-            type: 'circle',
-            source: 'samples',
-            layout: { visibility: 'none' },
-            paint: {
-              'circle-color': 'rgba(0,0,0,0)',
-              'circle-radius': 12,
-              'circle-stroke-color': '#000000',
-              'circle-stroke-width': 0.8,
-              'circle-stroke-opacity': def.alpha
-            }
+      // Add contour-lines source and layer for interpolated contours
+      if (!map.getSource('contour-lines')) {
+        map.addSource('contour-lines', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        })
+      }
+
+      if (!map.getLayer('contour-lines-layer')) {
+        const contourLayer = {
+          id: 'contour-lines-layer',
+          type: 'line',
+          source: 'contour-lines',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+            'visibility': 'none'
+          },
+          paint: {
+            'line-color': '#000000',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.8, 8, 1.8, 14, 3.0],
+            'line-opacity': 0.5
           }
-          if (map.getLayer('samples-layer')) map.addLayer(layer, 'samples-layer')
-          else map.addLayer(layer)
         }
+        if (map.getLayer('samples-layer')) map.addLayer(contourLayer, 'samples-layer')
+        else map.addLayer(contourLayer)
       }
     } catch (e) { void e }
   }, [surfaceOverlayEnabled, contourOverlayEnabled, selectedPalette, overlayOpacity, isGroupingRenderable, groupAssignments, groupColors, integralsMeta])
@@ -399,22 +400,10 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         map.setPaintProperty('samples-spread', 'circle-opacity', clampedOpacity)
       }
 
-      const contourLayerDefs = [
-        { id: 'samples-contour-r1', factor: 0.28, alpha: 0.90 },
-        { id: 'samples-contour-r2', factor: 0.42, alpha: 0.86 },
-        { id: 'samples-contour-r3', factor: 0.56, alpha: 0.82 },
-        { id: 'samples-contour-r4', factor: 0.70, alpha: 0.78 },
-        { id: 'samples-contour-r5', factor: 0.84, alpha: 0.74 },
-        { id: 'samples-contour-r6', factor: 1.00, alpha: 0.70 }
-      ]
-      for (const def of contourLayerDefs) {
-        if (!map.getLayer(def.id)) continue
-        map.setLayoutProperty(def.id, 'visibility', contourMode ? 'visible' : 'none')
-        map.setPaintProperty(def.id, 'circle-color', 'rgba(0,0,0,0)')
-        map.setPaintProperty(def.id, 'circle-radius', Math.max(0.25, radiusPx * def.factor))
-        map.setPaintProperty(def.id, 'circle-stroke-color', '#000000')
-        map.setPaintProperty(def.id, 'circle-stroke-width', ['interpolate', ['linear'], ['zoom'], 2, 0.35, 5, 0.6, 8, 0.9, 11, 1.2])
-        map.setPaintProperty(def.id, 'circle-stroke-opacity', Math.max(0.1, Math.min(1, def.alpha * clampedOpacity * 1.15)))
+      // Update contour-lines visibility
+      if (map.getLayer('contour-lines-layer')) {
+        map.setLayoutProperty('contour-lines-layer', 'visibility', contourMode ? 'visible' : 'none')
+        map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.3, clampedOpacity * 0.8))
       }
 
       if (map.getLayer('samples-layer')) {
@@ -488,6 +477,50 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       }
     } catch (e) { void e }
   }, [integrals, integralsMeta, isGroupingRenderable, groupAssignments, groupColors])
+
+  // Generate contours from samples and integrals
+  useEffect(() => {
+    try {
+      const map = mapRef.current
+      const geo = lastSamplesGeoRef.current
+      if (!map || !map.getSource || !geo || !Array.isArray(geo.features) || !geo.features.length) return
+      if (!integrals || Object.keys(integrals).length === 0) {
+        // Clear contours if no integrals
+        if (map.getSource('contour-lines')) {
+          map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
+        }
+        return
+      }
+
+      // Build sample array with integral values for contour generation
+      const samples = []
+      for (const f of geo.features) {
+        const fid = String((f && f.properties && f.properties.id) || '')
+        const intVal = integrals && integrals[fid] !== undefined ? Number(integrals[fid]) : null
+        if (intVal !== null && f.geometry && f.geometry.type === 'Point' && Array.isArray(f.geometry.coordinates)) {
+          const [lon, lat] = f.geometry.coordinates
+          if (Number.isFinite(lon) && Number.isFinite(lat)) {
+            samples.push({ lon, lat, value: intVal })
+          }
+        }
+      }
+
+      if (samples.length < 3) {
+        // Need at least 3 points for meaningful contours
+        if (map.getSource('contour-lines')) {
+          map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
+        }
+        return
+      }
+
+      // Generate contours
+      const contours = generateContours(samples, { numLevels: 8, gridSize: 40 })
+      if (map.getSource('contour-lines')) {
+        try { map.getSource('contour-lines').setData(contours) } catch (e) { void e }
+      }
+    } catch (e) { void e }
+  }, [integrals])
+
 
   
 
