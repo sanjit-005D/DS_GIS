@@ -354,9 +354,10 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
             'visibility': 'none'
           },
           paint: {
-            'line-color': '#000000',
-            'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.8, 8, 1.8, 14, 3.0],
-            'line-opacity': 0.5
+            'line-color': '#333333',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1.2, 6, 2.0, 10, 3.5, 14, 5.0],
+            'line-opacity': 0.75,
+            'line-dasharray': [1, 1]
           }
         }
         if (map.getLayer('samples-layer')) map.addLayer(contourLayer, 'samples-layer')
@@ -400,10 +401,10 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         map.setPaintProperty('samples-spread', 'circle-opacity', clampedOpacity)
       }
 
-      // Update contour-lines visibility
+      // Update contour-lines visibility and styling
       if (map.getLayer('contour-lines-layer')) {
         map.setLayoutProperty('contour-lines-layer', 'visibility', contourMode ? 'visible' : 'none')
-        map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.3, clampedOpacity * 0.8))
+        map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.5, Math.min(1, clampedOpacity)))
       }
 
       if (map.getLayer('samples-layer')) {
@@ -514,7 +515,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       }
 
       // Generate contours
-      const contours = generateContours(samples, { numLevels: 8, gridSize: 40 })
+      const contours = generateContours(samples, { numLevels: 12, gridSize: 60 })
       if (map.getSource('contour-lines')) {
         try { map.getSource('contour-lines').setData(contours) } catch (e) { void e }
       }
