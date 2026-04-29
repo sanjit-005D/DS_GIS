@@ -315,7 +315,14 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
   const textColor = '#111'
 
   // available basemap styles (id matches layer values used by MapboxViewer)
-  const MAPBOX_TOKEN = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN) ? String(import.meta.env.VITE_MAPBOX_TOKEN).trim() : ''
+  const MAPBOX_TOKEN = (() => {
+    try {
+      const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {}
+      return String(env.VITE_MAPBOX_TOKEN || env.MAPBOX_TOKEN || '').trim()
+    } catch (e) {
+      return ''
+    }
+  })()
   const STYLES = [
     { id: 'gibs', label: 'Satellite', styleId: 'satellite-streets-v11' },
     { id: 'street', label: 'Streets', styleId: 'outdoors-v12' },

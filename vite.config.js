@@ -8,6 +8,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Expose both VITE_* and MAPBOX_* env vars to the client bundle.
+  // This lets production work even if the host variable is named MAPBOX_TOKEN.
+  envPrefix: ['VITE_', 'MAPBOX_'],
   plugins: [react()],
   resolve: {
     // Use explicit alias objects so subpath imports like 'three/tsl' are resolved correctly

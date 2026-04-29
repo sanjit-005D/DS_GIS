@@ -31,9 +31,14 @@ const ensureMapbox = () => {
   })
 }
 
-const MAPBOX_TOKEN = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN)
-  ? String(import.meta.env.VITE_MAPBOX_TOKEN).trim()
-  : ''
+const MAPBOX_TOKEN = (() => {
+  try {
+    const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {}
+    return String(env.VITE_MAPBOX_TOKEN || env.MAPBOX_TOKEN || '').trim()
+  } catch (e) {
+    return ''
+  }
+})()
 
 const HAS_MAPBOX_TOKEN = Boolean(MAPBOX_TOKEN)
 
@@ -363,6 +368,46 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         if (map.getLayer('samples-layer')) map.addLayer(contourLayer, 'samples-layer')
         else map.addLayer(contourLayer)
       }
+
+      // Flutter example parity:
+      // source id: terrain-data
+      // source url: mapbox://mapbox.mapbox-terrain-v2
+      // layer source-layer: contour
+      // This requires VITE_MAPBOX_TOKEN. Vector tiles are pre-rendered map data from Mapbox servers
+      // that include terrain contours, boundaries, and other map features.
+      // URL formats: 'mapbox://mapbox.mapbox-terrain-v2' (terrain), 
+      //             'mapbox://mapbox.mapbox-streets-v8' (streets), etc.
+      if (HAS_MAPBOX_TOKEN && !map.getSource('terrain-data')) {
+        try {
+          map.addSource('terrain-data', {
+            type: 'vector',
+            url: 'mapbox://mapbox.mapbox-terrain-v2'
+          })
+        } catch (e) { void e }
+      }
+
+      // Add layer for vector tile contours (terrain contours from Mapbox)
+      if (HAS_MAPBOX_TOKEN && !map.getLayer('terrain-contours')) {
+        try {
+          map.addLayer({
+            id: 'terrain-contours',
+            type: 'line',
+            source: 'terrain-data',
+            'source-layer': 'contour',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+              'visibility': 'none'
+            },
+            paint: {
+              // Match example style: red contour lines with rounded joins/caps
+              'line-color': '#ff0000',
+              'line-width': 1.9,
+              'line-opacity': 0.8
+            }
+          })
+        } catch (e) { void e }
+      }
     } catch (e) { void e }
   }, [surfaceOverlayEnabled, contourOverlayEnabled, selectedPalette, overlayOpacity, isGroupingRenderable, groupAssignments, groupColors, integralsMeta])
 
@@ -403,8 +448,15 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
 
       // Update contour-lines visibility and styling
       if (map.getLayer('contour-lines-layer')) {
-        map.setLayoutProperty('contour-lines-layer', 'visibility', contourMode ? 'visible' : 'none')
+        // Show generated contours only as fallback when Mapbox vector contours are unavailable.
+        map.setLayoutProperty('contour-lines-layer', 'visibility', (contourMode && !HAS_MAPBOX_TOKEN) ? 'visible' : 'none')
         map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.5, Math.min(1, clampedOpacity)))
+      }
+
+      // Update terrain vector tile contours visibility (Mapbox terrain v2)
+      if (map.getLayer('terrain-contours')) {
+        map.setLayoutProperty('terrain-contours', 'visibility', contourMode && HAS_MAPBOX_TOKEN ? 'visible' : 'none')
+        map.setPaintProperty('terrain-contours', 'line-opacity', Math.max(0.4, Math.min(1, clampedOpacity * 0.7)))
       }
 
       if (map.getLayer('samples-layer')) {
@@ -485,6 +537,13 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       const map = mapRef.current
       const geo = lastSamplesGeoRef.current
       if (!map || !map.getSource || !geo || !Array.isArray(geo.features) || !geo.features.length) return
+      if (HAS_MAPBOX_TOKEN) {
+        // With Mapbox token, terrain vector contours are used as primary contour source.
+        if (map.getSource('contour-lines')) {
+          map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
+        }
+        return
+      }
       if (!integrals || Object.keys(integrals).length === 0) {
         // Clear contours if no integrals
         if (map.getSource('contour-lines')) {
