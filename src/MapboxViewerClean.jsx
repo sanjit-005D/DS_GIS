@@ -1020,7 +1020,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       ensureOverlayLayers(map)
       applyOverlayStyling(map)
     } catch (e) { void e }
-  }, [surfaceOverlayEnabled, spreadDiameterKm, overlayOpacity, ensureOverlayLayers, applyOverlayStyling])
+  }, [surfaceOverlayEnabled, contourOverlayEnabled, spreadDiameterKm, overlayOpacity, ensureOverlayLayers, applyOverlayStyling])
 
   useEffect(() => {
     try {
