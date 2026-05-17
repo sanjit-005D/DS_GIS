@@ -38,8 +38,8 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
   const [selectedPalette, setSelectedPalette] = useState('default')
   const [surfaceOverlayEnabled, setSurfaceOverlayEnabled] = useState(true)
   const [contourOverlayEnabled, setContourOverlayEnabled] = useState(false)
-  const [spreadDiameterKm, setSpreadDiameterKm] = useState(320)
-  const [overlayOpacity, setOverlayOpacity] = useState(0.45)
+  const [spreadDiameterKm, setSpreadDiameterKm] = useState(100)
+  const [overlayOpacity, setOverlayOpacity] = useState(0.5)
   
   // Color mapping mode: 'cursor' (X1/X2 + cursor module) or 'integration' (wavelength slider module)
   const [colorMappingMode, setColorMappingMode] = useState(null)
@@ -1009,6 +1009,8 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
   const groupAvgPlotHeight = Math.max(140, Math.min(320, groupAvgPopupRect.height - 56))
   const groupRepPlotWidth = Math.max(280, Math.min(560, groupRepPanelRect.width - 14))
   const groupRepPlotHeight = Math.max(160, Math.min(360, groupRepPanelRect.height - 56))
+  const samplePlotWidth = Math.max(180, Math.min(520, samplePopupRect.width - 12))
+  const samplePlotHeight = Math.max(90, Math.min(300, samplePopupRect.height - 120))
 
   const startPcaPanelAction = (type, e, direction = null) => {
     if (!isLightLayer || !groupingEnabled) return
@@ -2296,22 +2298,24 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
             </button>
           </div>
           {!groupAvgPopupMinimized && (
-            <Plot
-              data={groupAveragedTraces}
-              layout={{
-                width: groupAvgPlotWidth,
-                height: groupAvgPlotHeight,
-                margin: { t: 6, b: 24, l: 30, r: 8 },
-                paper_bgcolor: '#ffffff',
-                plot_bgcolor: '#ffffff',
-                showlegend: true,
-                legend: { orientation: 'h', x: 0, y: 1.12, font: { size: 9 } },
-                xaxis: { title: { text: 'Shift', font: { size: 10 } }, tickfont: { size: 9 }, zeroline: false, showgrid: true, gridcolor: 'rgba(0,0,0,0.06)' },
-                yaxis: { title: { text: 'Intensity', font: { size: 10 } }, tickfont: { size: 9 }, zeroline: false, showgrid: true, gridcolor: 'rgba(0,0,0,0.06)' }
-              }}
-              config={{ displayModeBar: false, responsive: false }}
-              style={{ width: groupAvgPlotWidth, height: groupAvgPlotHeight }}
-            />
+            <div style={{ width: '100%', height: groupAvgPlotHeight }}>
+              <Plot
+                data={groupAveragedTraces}
+                useResizeHandler={true}
+                layout={{
+                  autosize: true,
+                  margin: { t: 6, b: 24, l: 30, r: 8 },
+                  paper_bgcolor: '#ffffff',
+                  plot_bgcolor: '#ffffff',
+                  showlegend: true,
+                  legend: { orientation: 'h', x: 0, y: 1.12, font: { size: 9 } },
+                  xaxis: { title: { text: 'Shift', font: { size: 10 } }, tickfont: { size: 9 }, zeroline: false, showgrid: true, gridcolor: 'rgba(0,0,0,0.06)' },
+                  yaxis: { title: { text: 'Intensity', font: { size: 10 } }, tickfont: { size: 9 }, zeroline: false, showgrid: true, gridcolor: 'rgba(0,0,0,0.06)' }
+                }}
+                config={{ displayModeBar: false, responsive: true }}
+                style={{ width: '100%', height: '100%' }}
+              />
+            </div>
           )}
           <div
             className="popup-resize-handle"
@@ -2359,8 +2363,9 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
             </button>
           </div>
           {!groupRepPanelMinimized && (
-            <Plot
-              data={(() => {
+            <div style={{ width: '100%', height: groupRepPlotHeight }}>
+              <Plot
+                data={(() => {
                 if (groupRepresentation.method === 'pca') {
                   const pts = Array.isArray(groupRepresentation.points) ? groupRepresentation.points : []
                   return [
@@ -2413,31 +2418,32 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                   }
                 ]
               })()}
-              layout={{
-                width: groupRepPlotWidth,
-                height: groupRepPlotHeight,
-                margin: { t: 8, b: 34, l: 34, r: 8 },
-                paper_bgcolor: '#ffffff',
-                plot_bgcolor: '#ffffff',
-                showlegend: false,
-                xaxis: {
-                  title: { text: groupRepresentation.method === 'pca' ? 'Component 1' : 'Sample Order', font: { size: 10 } },
-                  tickfont: { size: 9 },
-                  showgrid: true,
-                  gridcolor: 'rgba(0,0,0,0.06)',
-                  zeroline: false
-                },
-                yaxis: {
-                  title: { text: groupRepresentation.method === 'pca' ? 'Component 2' : 'Linkage Distance', font: { size: 10 } },
-                  tickfont: { size: 9 },
-                  showgrid: true,
-                  gridcolor: 'rgba(0,0,0,0.06)',
-                  zeroline: false
-                }
-              }}
-              config={{ displayModeBar: false, responsive: false }}
-              style={{ width: groupRepPlotWidth, height: groupRepPlotHeight }}
-            />
+                useResizeHandler={true}
+                layout={{
+                  autosize: true,
+                  margin: { t: 8, b: 34, l: 34, r: 8 },
+                  paper_bgcolor: '#ffffff',
+                  plot_bgcolor: '#ffffff',
+                  showlegend: false,
+                  xaxis: {
+                    title: { text: groupRepresentation.method === 'pca' ? 'Component 1' : 'Sample Order', font: { size: 10 } },
+                    tickfont: { size: 9 },
+                    showgrid: true,
+                    gridcolor: 'rgba(0,0,0,0.06)',
+                    zeroline: false
+                  },
+                  yaxis: {
+                    title: { text: groupRepresentation.method === 'pca' ? 'Component 2' : 'Linkage Distance', font: { size: 10 } },
+                    tickfont: { size: 9 },
+                    showgrid: true,
+                    gridcolor: 'rgba(0,0,0,0.06)',
+                    zeroline: false
+                  }
+                }}
+                config={{ displayModeBar: false, responsive: true }}
+                style={{ width: '100%', height: '100%' }}
+              />
+            </div>
           )}
           <div
             className="popup-resize-handle"
@@ -2528,22 +2534,22 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                         const plotBg = 'rgba(0,0,0,0)'
                         const axisColor = '#111111'
                         return (
-                          <div style={{ width: 200, maxWidth: 200, marginTop: 4, overflow: 'hidden' }}>
+                          <div style={{ width: '100%', height: samplePlotHeight, maxWidth: '100%', marginTop: 4, overflow: 'hidden' }}>
                             <Plot
                               data={[
                                 { x: x, y: y, type: 'scatter', mode: 'lines', line: { color: plotLineColor, width: 1.5 }, name: 'Spectra' }
                               ]}
+                              useResizeHandler={true}
                               layout={{
-                                width: 200,
+                                autosize: true,
                                 margin: { t: 2, b: 22, l: 28, r: 3 },
-                                height: 110,
                                 paper_bgcolor: 'rgba(0,0,0,0)',
                                 plot_bgcolor: plotBg,
                                 xaxis: { title: { text: 'Shift', font: { color: axisColor, size: 9 } }, tickfont: { color: axisColor, size: 9 }, automargin: true },
                                 yaxis: { title: { text: 'Intensity', font: { color: axisColor, size: 9 } }, tickfont: { color: axisColor, size: 9 }, automargin: true }
                               }}
-                              config={{ displayModeBar: false, responsive: false }}
-                              style={{ width: 200, height: 110 }}
+                              config={{ displayModeBar: false, responsive: true }}
+                              style={{ width: '100%', height: '100%' }}
                             />
                           </div>
                         )
