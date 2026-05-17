@@ -165,6 +165,12 @@ function makeColorExpressionStatic(meta, cmap = 'viridis') {
   } catch (e) { void e; return '#ff2d55' }
 }
 
+function makeContourColorExpression(meta, cmap = 'viridis') {
+  void meta
+  void cmap
+  return '#000000'
+}
+
 // build a safe 3-stop interpolate expression [min -> mid -> max] with colors blue->yellow->red
 function makeThreeStopExpression(meta) {
   try {
@@ -305,6 +311,13 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
     try {
       if (!map || !map.getSource || !map.getLayer || !map.addLayer || !map.addSource) return
 
+      if (!map.getSource('samples')) {
+        map.addSource('samples', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        })
+      }
+
       if (!map.getLayer('samples-heatmap')) {
         const heatLayer = {
           id: 'samples-heatmap',
@@ -359,14 +372,12 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
             'visibility': 'none'
           },
           paint: {
-            'line-color': '#333333',
-            'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1.2, 6, 2.0, 10, 3.5, 14, 5.0],
-            'line-opacity': 0.75,
-            'line-dasharray': [1, 1]
+            'line-color': makeContourColorExpression(integralsMeta, selectedPalette),
+            'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.6, 10, 2.5, 14, 3.6],
+            'line-opacity': 0.95
           }
         }
-        if (map.getLayer('samples-layer')) map.addLayer(contourLayer, 'samples-layer')
-        else map.addLayer(contourLayer)
+        map.addLayer(contourLayer)
       }
 
       // Flutter example parity:
@@ -389,7 +400,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       // Add layer for vector tile contours (terrain contours from Mapbox)
       if (HAS_MAPBOX_TOKEN && !map.getLayer('terrain-contours')) {
         try {
-          map.addLayer({
+          const terrainContoursLayer = {
             id: 'terrain-contours',
             type: 'line',
             source: 'terrain-data',
@@ -397,15 +408,17 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
             layout: {
               'line-join': 'round',
               'line-cap': 'round',
-              'visibility': 'none'
+              'visibility': (contourOverlayEnabled && !isGroupingRenderable) ? 'visible' : 'none'
             },
             paint: {
-              // Match example style: red contour lines with rounded joins/caps
-              'line-color': '#ff0000',
-              'line-width': 1.9,
-              'line-opacity': 0.8
+              'line-color': '#000000',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.75, 6, 1.1, 8, 1.7, 10, 2.4, 12, 3.0],
+              'line-opacity': 0.92
             }
-          })
+          }
+          const beforeLayerId = map.getLayer('samples-layer') ? 'samples-layer' : undefined
+          if (beforeLayerId) map.addLayer(terrainContoursLayer, beforeLayerId)
+          else map.addLayer(terrainContoursLayer)
         } catch (e) { void e }
       }
     } catch (e) { void e }
@@ -416,13 +429,13 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       if (!map || !map.getLayer || !map.setPaintProperty || !map.setLayoutProperty) return
       const clampedOpacity = Math.max(0, Math.min(1, Number(overlayOpacity) || 0))
       const spreadOverlayMode = surfaceOverlayEnabled
-      const contourMode = spreadOverlayMode && contourOverlayEnabled && !isGroupingRenderable
+      const contourMode = contourOverlayEnabled && !isGroupingRenderable
       // Spread slider is interpreted as a true geodesic radius in km.
       // Pixel radius is derived from current zoom/projection, so zooming out shrinks it naturally.
       const radiusPx = Math.max(0.25, kmRadiusToPixels(map, Math.max(1, Number(spreadDiameterKm) || 1)))
 
       if (map.getLayer('samples-heatmap')) {
-        map.setLayoutProperty('samples-heatmap', 'visibility', contourMode ? 'visible' : 'none')
+        map.setLayoutProperty('samples-heatmap', 'visibility', 'none')
         map.setPaintProperty('samples-heatmap', 'heatmap-weight', ['max', 0.18, ['coalesce', ['get', 'intNorm'], 0]])
         map.setPaintProperty('samples-heatmap', 'heatmap-intensity', 1.35)
         map.setPaintProperty('samples-heatmap', 'heatmap-color', makeHeatmapColorExpression(selectedPalette))
@@ -439,7 +452,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
           integralsMeta,
           selectedPalette
         })
-        map.setLayoutProperty('samples-spread', 'visibility', spreadOverlayMode && !contourMode ? 'visible' : 'none')
+        map.setLayoutProperty('samples-spread', 'visibility', spreadOverlayMode ? 'visible' : 'none')
         map.setPaintProperty('samples-spread', 'circle-color', spreadColorExpr)
         map.setPaintProperty('samples-spread', 'circle-radius', radiusPx)
         map.setPaintProperty('samples-spread', 'circle-blur', 0.92)
@@ -448,15 +461,16 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
 
       // Update contour-lines visibility and styling
       if (map.getLayer('contour-lines-layer')) {
-        // Show generated contours only as fallback when Mapbox vector contours are unavailable.
-        map.setLayoutProperty('contour-lines-layer', 'visibility', (contourMode && !HAS_MAPBOX_TOKEN) ? 'visible' : 'none')
-        map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.5, Math.min(1, clampedOpacity)))
+        // Show generated contours as the visible fallback whenever the contour toggle is enabled.
+        map.setLayoutProperty('contour-lines-layer', 'visibility', contourMode ? 'visible' : 'none')
+        map.setPaintProperty('contour-lines-layer', 'line-color', '#000000')
+        map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.8, Math.min(1, clampedOpacity)))
       }
 
       // Update terrain vector tile contours visibility (Mapbox terrain v2)
       if (map.getLayer('terrain-contours')) {
         map.setLayoutProperty('terrain-contours', 'visibility', contourMode && HAS_MAPBOX_TOKEN ? 'visible' : 'none')
-        map.setPaintProperty('terrain-contours', 'line-opacity', Math.max(0.4, Math.min(1, clampedOpacity * 0.7)))
+        map.setPaintProperty('terrain-contours', 'line-opacity', Math.max(0.85, Math.min(1, clampedOpacity)))
       }
 
       if (map.getLayer('samples-layer')) {
@@ -490,6 +504,37 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       }
     } catch (e) { void e }
   }, [overlayOpacity, spreadDiameterKm, surfaceOverlayEnabled, contourOverlayEnabled, selectedPalette, integralsMeta, isGroupingRenderable, groupAssignments, groupColors])
+
+  const updateGeneratedContours = React.useCallback((map) => {
+    try {
+      if (!map || !map.getSource || !map.getSource('contour-lines')) return
+      const geo = lastSamplesGeoRef.current
+      if (!geo || !Array.isArray(geo.features) || !geo.features.length || !integrals) {
+        map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
+        return
+      }
+
+      const samples = []
+      for (const f of geo.features) {
+        const fid = String((f && f.properties && f.properties.id) || '')
+        const intVal = integrals && integrals[fid] !== undefined ? Number(integrals[fid]) : null
+        if (intVal !== null && f.geometry && f.geometry.type === 'Point' && Array.isArray(f.geometry.coordinates)) {
+          const [lon, lat] = f.geometry.coordinates
+          if (Number.isFinite(lon) && Number.isFinite(lat)) {
+            samples.push({ lon, lat, value: intVal })
+          }
+        }
+      }
+
+      if (samples.length < 3) {
+        map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
+        return
+      }
+
+      const contours = generateContours(samples, { numLevels: 16, gridSize: 120, integralsMeta: integralsMetaRef.current })
+      map.getSource('contour-lines').setData(contours)
+    } catch (e) { void e }
+  }, [integrals])
 
   // keep refs updated so event handlers don't need effect re-registration
   useEffect(() => { onCameraChangeRef.current = onCameraChange }, [onCameraChange])
@@ -531,55 +576,15 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
     } catch (e) { void e }
   }, [integrals, integralsMeta, isGroupingRenderable, groupAssignments, groupColors])
 
-  // Generate contours from samples and integrals
+  // Generate contours from samples and integrals.
+  // This runs after samples load and whenever the integral values change.
   useEffect(() => {
     try {
       const map = mapRef.current
-      const geo = lastSamplesGeoRef.current
-      if (!map || !map.getSource || !geo || !Array.isArray(geo.features) || !geo.features.length) return
-      if (HAS_MAPBOX_TOKEN) {
-        // With Mapbox token, terrain vector contours are used as primary contour source.
-        if (map.getSource('contour-lines')) {
-          map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
-        }
-        return
-      }
-      if (!integrals || Object.keys(integrals).length === 0) {
-        // Clear contours if no integrals
-        if (map.getSource('contour-lines')) {
-          map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
-        }
-        return
-      }
-
-      // Build sample array with integral values for contour generation
-      const samples = []
-      for (const f of geo.features) {
-        const fid = String((f && f.properties && f.properties.id) || '')
-        const intVal = integrals && integrals[fid] !== undefined ? Number(integrals[fid]) : null
-        if (intVal !== null && f.geometry && f.geometry.type === 'Point' && Array.isArray(f.geometry.coordinates)) {
-          const [lon, lat] = f.geometry.coordinates
-          if (Number.isFinite(lon) && Number.isFinite(lat)) {
-            samples.push({ lon, lat, value: intVal })
-          }
-        }
-      }
-
-      if (samples.length < 3) {
-        // Need at least 3 points for meaningful contours
-        if (map.getSource('contour-lines')) {
-          map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
-        }
-        return
-      }
-
-      // Generate contours
-      const contours = generateContours(samples, { numLevels: 12, gridSize: 60 })
-      if (map.getSource('contour-lines')) {
-        try { map.getSource('contour-lines').setData(contours) } catch (e) { void e }
-      }
+      if (!map) return
+      updateGeneratedContours(map)
     } catch (e) { void e }
-  }, [integrals])
+  }, [updateGeneratedContours, selectedTable, showSamples])
 
 
   
@@ -601,6 +606,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       if (error) throw error
       if (!rows || !rows.length) {
         if (map.getSource && map.getSource('samples')) map.getSource('samples').setData({ type: 'FeatureCollection', features: [] })
+        if (map.getSource && map.getSource('contour-lines')) map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
         return
       }
 
@@ -660,6 +666,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
   lastSamplesGeoRef.current = geojson
   if (!map.getSource('samples')) map.addSource('samples', { type: 'geojson', data: geojson })
   else map.getSource('samples').setData(geojson)
+      updateGeneratedContours(map)
       if (!map.getLayer('samples-layer')) {
         map.addLayer({
           id: 'samples-layer',
@@ -683,7 +690,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       applyOverlayStyling(map)
     } catch (err) { /* console.warn('Failed to load samples', err); */ }
     finally { samplesLoadInFlightRef.current = false }
-  }, [selectedTable, selectedIdColumn, showSamples, integrals, integralsMeta, selectedPalette, ensureOverlayLayers, applyOverlayStyling, isGroupingRenderable, groupAssignments, groupColors, surfaceOverlayEnabled])
+  }, [selectedTable, selectedIdColumn, showSamples, integrals, integralsMeta, selectedPalette, ensureOverlayLayers, applyOverlayStyling, isGroupingRenderable, groupAssignments, groupColors, surfaceOverlayEnabled, updateGeneratedContours])
 
   function makeThreeStopExpressionPalette(meta, cmap = 'viridis') {
     try {
@@ -998,11 +1005,12 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         })
       }
   try { src.setData(updated); lastSamplesGeoRef.current = updated } catch (e) { void e; /* ignore */ }
+        try { updateGeneratedContours(map) } catch (e) { void e; /* ignore */ }
 
       // update paint expression
       try { applyOverlayStyling(map) } catch (e) { void e; /* ignore */ }
   } catch (e) { void e; /* ignore */ }
-  }, [integrals, integralsMeta, selectedPalette, applyOverlayStyling, isGroupingActive, groupAssignments, groupColors, surfaceOverlayEnabled])
+      }, [integrals, integralsMeta, selectedPalette, applyOverlayStyling, isGroupingActive, groupAssignments, groupColors, surfaceOverlayEnabled, updateGeneratedContours])
 
   // update color expression when palette changes independently of data/meta changes
   useEffect(() => {

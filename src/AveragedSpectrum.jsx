@@ -35,6 +35,8 @@ const interpLinear = (xs, ys, xq) => {
 
 const AveragedSpectrum = React.forwardRef(function AveragedSpectrum({ selectedTable = null, selectedIdColumn = null, textColor = '#111', onRangeChange = () => {}, _inline = false, useNormalized = false, colorMappingMode = 'cursor', integrationRangeLow = null, integrationRangeHigh = null }, ref) {
   const canvasRef = useRef(null)
+  const containerRef = useRef(null)
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const trackRef = useRef(null)
   const rawGridRef = useRef([])
   const userDraggingRef = useRef(false)
@@ -569,20 +571,37 @@ const AveragedSpectrum = React.forwardRef(function AveragedSpectrum({ selectedTa
     }
   }, [colorMappingMode, grid, perSample, iLow, iHigh, cursorIdx, computeAndNotify, useNormalized, globalIntensityMin, globalIntensityMax])
 
+  // Resize observer: update container size so canvas redraw reacts to popup/panel resizes
+  useEffect(() => {
+    const node = containerRef.current
+    if (!node || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      try {
+        setContainerSize({ width: node.clientWidth || 0, height: node.clientHeight || 0 })
+      } catch (e) { void e }
+    })
+    ro.observe(node)
+    // initialize
+    setContainerSize({ width: node.clientWidth || 0, height: node.clientHeight || 0 })
+    return () => { try { ro.disconnect() } catch (e) { void e } }
+  }, [containerRef.current])
+
   useEffect(() => {
     const c = canvasRef.current
     if (!c) return
     const dpr = window.devicePixelRatio || 1
-    // Use fixed width or fallback if clientWidth is 0 (when hidden)
-    const clientW = c.clientWidth > 0 ? c.clientWidth : 370
-    const w = Math.max(220, Math.min(420, clientW))
-    const h = 80
+    // Prefer container measured width; fallback to canvas clientWidth or fixed
+    const clientW = (containerSize.width > 0) ? containerSize.width : (c.clientWidth > 0 ? c.clientWidth : 370)
+    const w = Math.max(220, Math.min(900, Math.floor(clientW)))
+    // compute height based on width with sensible bounds; prefer container height if available
+    const computedH = (containerSize.height && containerSize.height > 40) ? Math.max(60, containerSize.height - 40) : Math.max(80, Math.min(320, Math.round(w * 0.28)))
+    const h = computedH
     c.width = Math.floor(w * dpr)
     c.height = Math.floor(h * dpr)
     c.style.width = w + 'px'
     c.style.height = h + 'px'
     const ctx = c.getContext('2d')
-    ctx.scale(dpr, dpr)
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
 
     if (!grid || grid.length < 2 || !avgY || avgY.length === 0) {
@@ -939,8 +958,8 @@ const AveragedSpectrum = React.forwardRef(function AveragedSpectrum({ selectedTa
   return (
     <div style={{ fontFamily: 'sans-serif', color: textColor, fontSize: 13 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <canvas ref={canvasRef} style={{ width: 370, height: 110, display: 'block', background: 'transparent', flex: '0 0 auto', borderRadius: 4 }} />
+        <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+          <canvas ref={canvasRef} style={{ width: '100%', height: 'auto', display: 'block', background: 'transparent', flex: '0 0 auto', borderRadius: 4 }} />
           <div style={{ fontSize: 12, color: textColor, paddingLeft: 10 }}>
             {grid && grid.length > 0 && `${(grid[0] ?? 0).toFixed(1)} → ${(grid[grid.length - 1] ?? 0).toFixed(1)}`}
           </div>
