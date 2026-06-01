@@ -374,10 +374,16 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
           paint: {
             // prefer per-feature `linewidth` property; fall back to zoom-scaled width
             'line-color': makeContourColorExpression(integralsMeta, selectedPalette),
-            'line-width': ['coalesce', ['get', 'linewidth'], ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.6, 10, 2.5, 14, 3.6]],
+            'line-width': ['interpolate', ['linear'], ['zoom'],
+              2, ['coalesce', ['get', 'linewidth'], 0.9],
+              6, ['coalesce', ['get', 'linewidth'], 1.6],
+              10, ['coalesce', ['get', 'linewidth'], 2.5],
+              14, ['coalesce', ['get', 'linewidth'], 3.6]
+            ],
             'line-opacity': 0.95
           }
         }
+        // add layer on top so contours render above sample markers
         map.addLayer(contourLayer)
       }
 
@@ -492,7 +498,12 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.8, Math.min(1, clampedOpacity)))
         // Respect per-feature linewidth property when present; otherwise keep existing zoom-based widths
         try {
-          map.setPaintProperty('contour-lines-layer', 'line-width', ['coalesce', ['get', 'linewidth'], ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.6, 10, 2.5, 14, 3.6]])
+          map.setPaintProperty('contour-lines-layer', 'line-width', ['interpolate', ['linear'], ['zoom'],
+            2, ['coalesce', ['get', 'linewidth'], 0.9],
+            6, ['coalesce', ['get', 'linewidth'], 1.6],
+            10, ['coalesce', ['get', 'linewidth'], 2.5],
+            14, ['coalesce', ['get', 'linewidth'], 3.6]
+          ])
         } catch (e) { void e }
       }
 
@@ -547,6 +558,12 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         return
       }
 
+      // Debug: inspect incoming sample geo and integrals
+      try {
+        const numSamples = Array.isArray(geo.features) ? geo.features.length : 0
+        console.log('updateGeneratedContours: samples features=', numSamples, 'integralsMeta=', integralsMeta)
+      } catch (e) { void e }
+
       const samples = []
       for (const f of geo.features) {
         const fid = String((f && f.properties && f.properties.id) || '')
@@ -570,6 +587,17 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         integralsMeta: integralsMetaRef.current,
         spreadKm: Number(spreadDiameterKm) || Infinity
       })
+      // Debug: log summary of generated contours before setting source
+      try {
+        const counts = { LineString: 0, Point: 0, Other: 0 }
+        for (const f of contours.features || []) {
+          const t = f && f.geometry && f.geometry.type
+          if (t === 'LineString') counts.LineString++
+          else if (t === 'Point') counts.Point++
+          else counts.Other++
+        }
+        console.log('generateContours -> features:', (contours.features || []).length, counts, 'sampleProp:', (contours.features && contours.features[0] && contours.features[0].properties) || {})
+      } catch (e) { void e }
       map.getSource('contour-lines').setData(contours)
     } catch (e) { void e }
   }, [integrals, spreadDiameterKm])
