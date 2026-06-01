@@ -1,0 +1,44 @@
+{
+  "name": "workspace",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve:preview": "node scripts/preview-server.cjs",
+    "check:headers": "node scripts/check-headers.cjs",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "convert:shp": "node scripts/convert-shapefile.cjs"
+  },
+  "dependencies": {
+    "docx": "^9.5.1",
+    "maplibre-gl": "^2.4.0",
+    "plotly.js": "^3.1.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-plotly.js": "^2.6.0",
+    "shapefile": "^0.6.6",
+    "three": "*",
+    "three-globe": "*"
+  },
+  "devDependencies": {
+    "@babel/parser": "^7.28.5",
+    "@eslint/js": "^9.36.0",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "eslint": "^9.36.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.22",
+    "globals": "^16.4.0",
+    "vite": "npm:rolldown-vite@7.1.14"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.1.14"
+  }
+}
