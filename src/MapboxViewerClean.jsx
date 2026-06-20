@@ -427,44 +427,22 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
           })
         } catch (e) { void e }
       }
-
-      // Add layer for vector tile contours (terrain contours from Mapbox)
-      if (HAS_MAPBOX_TOKEN && !map.getLayer('terrain-contours')) {
-        try {
-          const terrainContoursLayer = {
-            id: 'terrain-contours',
-            type: 'line',
-            source: 'terrain-data',
-            'source-layer': 'contour',
-            layout: {
-              'line-join': 'round',
-              'line-cap': 'round',
-              'visibility': (contourOverlayEnabled && !isGroupingRenderable) ? 'visible' : 'none'
-            },
-            paint: {
-              'line-color': '#000000',
-              'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.75, 6, 1.1, 8, 1.7, 10, 2.4, 12, 3.0],
-              'line-opacity': 0.92
-            }
-          }
-          const beforeLayerId = map.getLayer('samples-layer') ? 'samples-layer' : undefined
-          if (beforeLayerId) map.addLayer(terrainContoursLayer, beforeLayerId)
-          else map.addLayer(terrainContoursLayer)
-        } catch (e) { void e }
-      }
     } catch (e) { void e }
   }, [surfaceOverlayEnabled, contourOverlayEnabled, selectedPalette, overlayOpacity, isGroupingRenderable, groupAssignments, groupColors, integralsMeta])
 
   const applyOverlayStyling = React.useCallback((map) => {
     try {
       if (!map || !map.getLayer || !map.setPaintProperty || !map.setLayoutProperty) return
+      const currentZoom = map.getZoom()
+      // Spectral contours can be viewed from zoom 6.0 and above
+      const CONTOUR_MIN_ZOOM = 6.0
       const clampedOpacity = Math.max(0, Math.min(1, Number(overlayOpacity) || 0))
       const spreadOverlayMode = surfaceOverlayEnabled
-      const contourMode = contourOverlayEnabled && !isGroupingRenderable
-      // Spread slider is interpreted as a true geodesic radius in km.
-      // Pixel radius is derived from current zoom/projection, so zooming out shrinks it naturally.
-      const radiusPx = Math.max(0.25, kmRadiusToPixels(map, Math.max(1, Number(spreadDiameterKm) || 1)))
+      const contourMode = contourOverlayEnabled && !isGroupingRenderable && currentZoom >= CONTOUR_MIN_ZOOM
 
+      // ... existing radiusPx calculation ...
+      const radiusPx = Math.max(0.25, kmRadiusToPixels(map, Math.max(1, Number(spreadDiameterKm) || 1)))
+      // ... heatmap and spread styling ...
       if (map.getLayer('samples-heatmap')) {
         map.setLayoutProperty('samples-heatmap', 'visibility', 'none')
         map.setPaintProperty('samples-heatmap', 'heatmap-weight', ['max', 0.18, ['coalesce', ['get', 'intNorm'], 0]])
@@ -494,7 +472,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       if (map.getLayer('contour-lines-layer')) {
         // Show generated contours as the visible fallback whenever the contour toggle is enabled.
         map.setLayoutProperty('contour-lines-layer', 'visibility', contourMode ? 'visible' : 'none')
-        map.setPaintProperty('contour-lines-layer', 'line-color', '#000000')
+        map.setPaintProperty('contour-lines-layer', 'line-color', makeContourColorExpression(integralsMeta, selectedPalette))
         map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.8, Math.min(1, clampedOpacity)))
         // Respect per-feature linewidth property when present; otherwise keep existing zoom-based widths
         try {
@@ -509,12 +487,6 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
 
       if (map.getLayer('contour-labels-layer')) {
         map.setLayoutProperty('contour-labels-layer', 'visibility', contourMode ? 'visible' : 'none')
-      }
-
-      // Update terrain vector tile contours visibility (Mapbox terrain v2)
-      if (map.getLayer('terrain-contours')) {
-        map.setLayoutProperty('terrain-contours', 'visibility', contourMode && HAS_MAPBOX_TOKEN ? 'visible' : 'none')
-        map.setPaintProperty('terrain-contours', 'line-opacity', Math.max(0.85, Math.min(1, clampedOpacity)))
       }
 
       if (map.getLayer('samples-layer')) {
@@ -552,26 +524,33 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
   const updateGeneratedContours = React.useCallback((map) => {
     try {
       if (!map || !map.getSource || !map.getSource('contour-lines')) return
+      
+      const currentZoom = map.getZoom()
+      const CONTOUR_MIN_ZOOM = 6.0
+      
+      if (currentZoom < CONTOUR_MIN_ZOOM) {
+        map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
+        return
+      }
+
       const geo = lastSamplesGeoRef.current
       if (!geo || !Array.isArray(geo.features) || !geo.features.length || !integrals) {
         map.getSource('contour-lines').setData({ type: 'FeatureCollection', features: [] })
         return
       }
 
-      // Debug: inspect incoming sample geo and integrals
-      try {
-        const numSamples = Array.isArray(geo.features) ? geo.features.length : 0
-        console.log('updateGeneratedContours: samples features=', numSamples, 'integralsMeta=', integralsMeta)
-      } catch (e) { void e }
-
+      const bounds = map.getBounds()
       const samples = []
       for (const f of geo.features) {
         const fid = String((f && f.properties && f.properties.id) || '')
         const intVal = integrals && integrals[fid] !== undefined ? Number(integrals[fid]) : null
+        
         if (intVal !== null && f.geometry && f.geometry.type === 'Point' && Array.isArray(f.geometry.coordinates)) {
           const [lon, lat] = f.geometry.coordinates
           if (Number.isFinite(lon) && Number.isFinite(lat)) {
-            samples.push({ lon, lat, value: intVal })
+            if (bounds.contains([lon, lat])) {
+              samples.push({ lon, lat, value: intVal })
+            }
           }
         }
       }
@@ -581,28 +560,22 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         return
       }
 
+      // Dynamic adaptive parameters based on zoom
+      const gridSize = Math.floor(Math.min(110, 50 + (currentZoom - 6) * 10))
+      const spreadKm = Math.max(5, (Number(spreadDiameterKm) || 120) * Math.pow(0.75, currentZoom - 6))
+
       const contours = generateContours(samples, {
-        numLevels: 16,
-        gridSize: 120,
-        integralsMeta: integralsMetaRef.current,
-        spreadKm: Number(spreadDiameterKm) || Infinity
+        numLevels: 6,
+        gridSize,
+        viewportBounds: bounds,
+        spreadKm
       })
-      // Debug: log summary of generated contours before setting source
-      try {
-        const counts = { LineString: 0, Point: 0, Other: 0 }
-        for (const f of contours.features || []) {
-          const t = f && f.geometry && f.geometry.type
-          if (t === 'LineString') counts.LineString++
-          else if (t === 'Point') counts.Point++
-          else counts.Other++
-        }
-        console.log('generateContours -> features:', (contours.features || []).length, counts, 'sampleProp:', (contours.features && contours.features[0] && contours.features[0].properties) || {})
-      } catch (e) { void e }
+      
       map.getSource('contour-lines').setData(contours)
     } catch (e) { void e }
   }, [integrals, spreadDiameterKm])
 
-  // keep refs updated so event handlers don't need effect re-registration
+  // ... refs and effects ...
   useEffect(() => { onCameraChangeRef.current = onCameraChange }, [onCameraChange])
   useEffect(() => { onMarkerClickRef.current = onMarkerClick }, [onMarkerClick])
   useEffect(() => { showSamplesRef.current = showSamples }, [showSamples])
@@ -613,6 +586,28 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
   useEffect(() => { groupingMethodRef.current = groupingMethod }, [groupingMethod])
   useEffect(() => { groupAssignmentsRef.current = groupAssignments }, [groupAssignments])
   useEffect(() => { groupColorsRef.current = groupColors }, [groupColors])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    
+    let frameId = null
+    const handleMove = () => {
+      if (frameId) cancelAnimationFrame(frameId)
+      frameId = requestAnimationFrame(() => {
+        if (contourOverlayEnabled && !isGroupingRenderable) {
+          updateGeneratedContours(map)
+        }
+        applyOverlayStyling(map)
+      })
+    }
+    
+    map.on('move', handleMove)
+    return () => {
+      map.off('move', handleMove)
+      if (frameId) cancelAnimationFrame(frameId)
+    }
+  }, [updateGeneratedContours, applyOverlayStyling, contourOverlayEnabled, isGroupingRenderable])
 
   // Update sample feature properties (intVal/intNorm) when integrals or integralsMeta change
   useEffect(() => {

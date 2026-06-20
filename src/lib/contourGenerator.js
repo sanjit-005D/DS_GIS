@@ -40,11 +40,13 @@ function smoothGrid(grid) {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       let sum = 0, count = 0;
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
+      // Use a larger 5x5 kernel for much smoother results
+      for (let dr = -2; dr <= 2; dr++) {
+        for (let dc = -2; dc <= 2; dc++) {
           const nr = r + dr, nc = c + dc;
           if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
-            const w = (dr === 0 && dc === 0) ? 4 : 1;
+            // Distance-based weight for kernel
+            const w = Math.exp(-(dr*dr + dc*dc) / 2);
             sum += grid[nr][nc] * w; count += w;
           }
         }
@@ -55,7 +57,7 @@ function smoothGrid(grid) {
   return smoothed;
 }
 
-function chaikinSmooth(points, iterations = 2) {
+function chaikinSmooth(points, iterations = 4) {
   if (points.length < 3) return points;
   let current = points;
   for (let iter = 0; iter < iterations; iter++) {
@@ -97,23 +99,80 @@ function chainSegments(segments) {
 }
 
 export function generateContours(samples, options = {}) {
-  const { numLevels = 8, gridSize = 60, spreadKm = Infinity } = options;
+  const { numLevels = 8, gridSize = 60, spreadKm = Infinity, viewportBounds = null } = options;
   if (!samples || samples.length < 3) return { type: 'FeatureCollection', features: [] };
 
-  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity, minVal = Infinity, maxVal = -Infinity;
+  let minLon, maxLon, minLat, maxLat, minVal = Infinity, maxVal = -Infinity;
+  
+  if (viewportBounds) {
+    minLon = viewportBounds.getWest();
+    maxLon = viewportBounds.getEast();
+    minLat = viewportBounds.getSouth();
+    maxLat = viewportBounds.getNorth();
+  } else {
+    minLon = Infinity; maxLon = -Infinity; minLat = Infinity; maxLat = -Infinity;
+    for (const s of samples) {
+      minLon = Math.min(minLon, s.lon); maxLon = Math.max(maxLon, s.lon);
+      minLat = Math.min(minLat, s.lat); maxLat = Math.max(maxLat, s.lat);
+    }
+    const pX = (maxLon - minLon) * 0.15, pY = (maxLat - minLat) * 0.15;
+    minLon -= pX; maxLon += pX; minLat -= pY; maxLat += pY;
+  }
+
   for (const s of samples) {
-    minLon = Math.min(minLon, s.lon); maxLon = Math.max(maxLon, s.lon);
-    minLat = Math.min(minLat, s.lat); maxLat = Math.max(maxLat, s.lat);
     minVal = Math.min(minVal, s.value); maxVal = Math.max(maxVal, s.value);
   }
-  const pX = (maxLon - minLon) * 0.15, pY = (maxLat - minLat) * 0.15;
-  minLon -= pX; maxLon += pX; minLat -= pY; maxLat += pY;
 
-  const res = Math.max(40, Math.min(100, gridSize));
+  const res = Math.max(40, Math.min(120, gridSize));
   const dx = (maxLon - minLon) / res, dy = (maxLat - minLat) / res;
-  let grid = Array.from({ length: res + 1 }, (_, i) => 
-    Array.from({ length: res + 1 }, (_, j) => lightInterpolate(minLon + j * dx, minLat + i * dy, samples, spreadKm))
+  
+  // Pre-process samples for faster interpolation
+  const processedSamples = samples.map(s => ({
+    ...s,
+    latRad: s.lat * Math.PI / 180,
+    lonRad: s.lon * Math.PI / 180,
+    cosLat: Math.cos(s.lat * Math.PI / 180)
+  }));
+
+  const fastInterpolate = (lon, lat) => {
+    let totalWeight = 0;
+    let totalValue = 0;
+    // Larger sigma creates softer, more circular blobs. 
+    // We also use a slower decay to prevent sharp linear boundaries.
+    const sigma = Number.isFinite(spreadKm) ? Math.max(5, spreadKm / 1.5) : 80;
+    const lat1 = lat * Math.PI / 180;
+    const lon1 = lon * Math.PI / 180;
+    const cosLat1 = Math.cos(lat1);
+
+    for (let i = 0; i < processedSamples.length; i++) {
+      const s = processedSamples[i];
+      const dLat = s.latRad - lat1;
+      const dLon = s.lonRad - lon1;
+      const a = Math.sin(dLat / 2) ** 2 + cosLat1 * s.cosLat * Math.sin(dLon / 2) ** 2;
+      const distKm = 12742 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+      if (distKm < 1e-6) return { value: s.value, weight: 1.0 };
+      // Gaussian weight with softer decay
+      const weight = Math.exp(-Math.pow(distKm / sigma, 2));
+      totalWeight += weight;
+      totalValue += s.value * weight;
+    }
+
+    // Clipping threshold: if we are too far from data, default to minVal
+    const weightThreshold = 0.02;
+    if (totalWeight < weightThreshold) return { value: minVal, weight: totalWeight };
+    
+    return { value: totalWeight > 0 ? totalValue / totalWeight : minVal, weight: totalWeight };
+  };
+
+  const gridData = Array.from({ length: res + 1 }, (_, i) => 
+    Array.from({ length: res + 1 }, (_, j) => fastInterpolate(minLon + j * dx, minLat + i * dy))
   );
+  
+  // Extract values for smoothing, keep weights for clipping
+  let grid = gridData.map(row => row.map(cell => cell.value));
+  const weights = gridData.map(row => row.map(cell => cell.weight));
+  
   grid = smoothGrid(grid);
 
   const levels = [];
@@ -129,6 +188,11 @@ export function generateContours(samples, options = {}) {
     const segments = [];
     for (let i = 0; i < res; i++) {
       for (let j = 0; j < res; j++) {
+        // Clipping: if any corner has weight above threshold, we can contour.
+        // Otherwise, skip to avoid extrapolation artifacts.
+        const w1 = weights[i][j], w2 = weights[i][j+1], w3 = weights[i+1][j+1], w4 = weights[i+1][j];
+        if (w1 < 0.02 && w2 < 0.02 && w3 < 0.02 && w4 < 0.02) continue;
+
         const v1 = grid[i][j], v2 = grid[i][j+1], v3 = grid[i+1][j+1], v4 = grid[i+1][j];
         let m = 0; if (v1 >= level) m |= 8; if (v2 >= level) m |= 4; if (v3 >= level) m |= 2; if (v4 >= level) m |= 1;
         if (m === 0 || m === 15) continue;
