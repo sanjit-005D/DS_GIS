@@ -105,10 +105,10 @@ export function generateContours(samples, options = {}) {
   let minLon, maxLon, minLat, maxLat, minVal = Infinity, maxVal = -Infinity;
   
   if (viewportBounds) {
-    minLon = viewportBounds.getWest();
-    maxLon = viewportBounds.getEast();
-    minLat = viewportBounds.getSouth();
-    maxLat = viewportBounds.getNorth();
+    minLon = typeof viewportBounds.getWest === 'function' ? viewportBounds.getWest() : viewportBounds.west;
+    maxLon = typeof viewportBounds.getEast === 'function' ? viewportBounds.getEast() : viewportBounds.east;
+    minLat = typeof viewportBounds.getSouth === 'function' ? viewportBounds.getSouth() : viewportBounds.south;
+    maxLat = typeof viewportBounds.getNorth === 'function' ? viewportBounds.getNorth() : viewportBounds.north;
   } else {
     minLon = Infinity; maxLon = -Infinity; minLat = Infinity; maxLat = -Infinity;
     for (const s of samples) {

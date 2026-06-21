@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { db, isApiAvailable, setApiAvailable } from './apiClient'
-import { generateContours } from './lib/contourGenerator'
 
 // Clean, minimal Mapbox viewer. Kept intentionally small to avoid complex nested blocks
 // that previously caused parser issues with the transform pipeline.
@@ -288,6 +287,7 @@ function kmRadiusToPixels(map, radiusKm) {
 export default function MapboxViewer({ className, selectedLayer = 'gibs', onCameraChange, showSamples = true, showLabels = true, selectedTable, selectedIdColumn, onMarkerClick, homeRequest = 0, integrals = null, integralsMeta = null, selectedPalette = 'viridis', useNormalized = false, surfaceOverlayEnabled = true, contourOverlayEnabled = false, spreadDiameterKm = 320, overlayOpacity = 0.45, groupingEnabled = false, groupingMethod = 'pca', groupAssignments = {}, groupColors = [] }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
+  const contourWorkerRef = useRef(null)
   const lastSamplesGeoRef = useRef(null)
   const onCameraChangeRef = useRef(onCameraChange)
   const onMarkerClickRef = useRef(onMarkerClick)
@@ -302,6 +302,23 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
   const samplesLoadInFlightRef = useRef(false)
   const isGroupingActive = selectedLayer === 'light' && groupingEnabled && (groupingMethod === 'pca' || groupingMethod === 'clustering' || groupingMethod === 'rf')
   const isGroupingRenderable = isGroupingActive && Object.keys(groupAssignments || {}).length > 0
+
+  useEffect(() => {
+    contourWorkerRef.current = new Worker(new URL('./lib/contourWorker.js', import.meta.url), { type: 'module' });
+    contourWorkerRef.current.onmessage = (e) => {
+      if (e.data.type === 'SUCCESS') {
+        const map = mapRef.current;
+        if (map && map.getSource('contour-lines')) {
+          map.getSource('contour-lines').setData(e.data.result);
+        }
+      }
+    };
+    return () => {
+      if (contourWorkerRef.current) {
+        contourWorkerRef.current.terminate();
+      }
+    };
+  }, []);
 
   const applySharedSpaceAmbience = React.useCallback((map) => {
     applyMapBackdrop(map)
@@ -564,14 +581,22 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       const gridSize = Math.floor(Math.min(110, 50 + (currentZoom - 6) * 10))
       const spreadKm = Math.max(5, (Number(spreadDiameterKm) || 120) * Math.pow(0.75, currentZoom - 6))
 
-      const contours = generateContours(samples, {
-        numLevels: 6,
-        gridSize,
-        viewportBounds: bounds,
-        spreadKm
-      })
-      
-      map.getSource('contour-lines').setData(contours)
+      if (contourWorkerRef.current) {
+        contourWorkerRef.current.postMessage({
+          samples,
+          options: {
+            numLevels: 6,
+            gridSize,
+            viewportBounds: {
+              west: bounds.getWest(),
+              east: bounds.getEast(),
+              south: bounds.getSouth(),
+              north: bounds.getNorth()
+            },
+            spreadKm
+          }
+        });
+      }
     } catch (e) { void e }
   }, [integrals, spreadDiameterKm])
 
