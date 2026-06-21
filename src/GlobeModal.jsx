@@ -100,7 +100,10 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
     plasma: { colors: ['#0d0887', '#6a00a8', '#b12a90', '#f16363', '#fca636'], label: 'Plasma' },
     inferno: { colors: ['#000004', '#420a68', '#932667', '#dd513a', '#fca50a'], label: 'Inferno' },
     magma: { colors: ['#000004', '#3b0f70', '#8c2981', '#de4968', '#fe9f6d'], label: 'Magma' },
-    turbo: { colors: ['#30123b', '#3f45a3', '#2ca02c', '#f6c300', '#f13b3b'], label: 'Turbo' }
+    turbo: { colors: ['#30123b', '#3f45a3', '#2ca02c', '#f6c300', '#f13b3b'], label: 'Turbo' },
+    set1: { colors: ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf', '#999999'], label: 'Set1 (Qual)' },
+    dark2: { colors: ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d', '#666666'], label: 'Dark2 (Qual)' },
+    paired: { colors: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a', '#ffff99', '#b15928'], label: 'Paired (Qual)' }
   }
   const paletteDragRef = React.useRef(null)
   const paletteDebounceRef = React.useRef(null)
@@ -147,7 +150,10 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
     q07: { label: 'Q07 Bold1', colors: ['#d00000', '#f48c06', '#ffba08', '#2dc653', '#34a0a4', '#3f37c9', '#7209b7', '#f72585'] },
     q08: { label: 'Q08 Bold2', colors: ['#00a6fb', '#0582ca', '#006494', '#003554', '#051923', '#ef476f', '#ffd166', '#06d6a0'] },
     q10: { label: 'Q10 ColorBlindSafe15', colors: ['#00429d', '#4771b2', '#73a2c6', '#a5d5d8', '#ffffe0', '#f9c89c', '#ed8a63', '#d1495b', '#93003a', '#2b9348', '#55a630', '#80b918', '#aacc00', '#bfd200', '#d4d700'] },
-    s01: { label: 'S01 Gray Scale', colors: ['#1f1f1f', '#4a4a4a', '#737373', '#9a9a9a', '#bfbfbf', '#e0e0e0'] }
+    s01: { label: 'S01 Gray Scale', colors: ['#1f1f1f', '#4a4a4a', '#737373', '#9a9a9a', '#bfbfbf', '#e0e0e0'] },
+    set1: { label: 'ColorBrewer Set1', colors: ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf', '#999999'] },
+    dark2: { label: 'ColorBrewer Dark2', colors: ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d', '#666666'] },
+    paired: { label: 'ColorBrewer Paired', colors: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a', '#ffff99', '#b15928'] }
   }
   const [selectedGroupPalette, setSelectedGroupPalette] = useState('q09')
   const pcaPanelRef = React.useRef(null)

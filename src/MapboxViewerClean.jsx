@@ -142,7 +142,10 @@ const PALETTES = {
   plasma: ['#0d0887', '#6a00a8', '#b12a90', '#f16363', '#fca636'],
   inferno: ['#000004', '#420a68', '#932667', '#dd513a', '#fca50a'],
   magma: ['#000004', '#3b0f70', '#8c2981', '#de4968', '#fe9f6d'],
-  turbo: ['#30123b', '#3f45a3', '#2ca02c', '#f6c300', '#f13b3b']
+  turbo: ['#30123b', '#3f45a3', '#2ca02c', '#f6c300', '#f13b3b'],
+  set1: ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf', '#999999'],
+  dark2: ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d', '#666666'],
+  paired: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a', '#ffff99', '#b15928']
 }
 
 function makeColorExpressionStatic(meta, cmap = 'viridis') {
@@ -203,16 +206,13 @@ function buildInterpolate(inputExpr, pairs) {
   } catch (e) { void e; return '#ff2d55' }
 }
 
-function makeGroupColorExpression(groupAssignments = {}, groupColors = [], fallback = '#ff2d55') {
+function makeGroupColorExpression(groupColors = [], fallback = '#ff2d55') {
   try {
-    const entries = Object.entries(groupAssignments || {})
-    if (!entries.length) return fallback
     const colors = Array.isArray(groupColors) && groupColors.length ? groupColors : ['#e63946', '#2a9d8f', '#457b9d']
-    const expr = ['match', ['to-string', ['get', 'id']]]
-    for (const [sampleId, gidRaw] of entries) {
-      const gid = Number(gidRaw)
-      const color = colors[((Number.isFinite(gid) ? gid : 0) % colors.length + colors.length) % colors.length]
-      expr.push(String(sampleId), color)
+    // Use match on 'grp' property for better performance than matching by ID
+    const expr = ['match', ['coalesce', ['get', 'grp'], -1]]
+    for (let i = 0; i < colors.length; i++) {
+      expr.push(i, colors[i])
     }
     expr.push(fallback)
     return expr
@@ -220,7 +220,8 @@ function makeGroupColorExpression(groupAssignments = {}, groupColors = [], fallb
 }
 
 function resolveSampleCircleColorExpression({ groupingActive = false, groupAssignments = {}, groupColors = [], surfaceOverlayEnabled = false, integralsMeta = null, selectedPalette = 'viridis' }) {
-  if (groupingActive) return makeGroupColorExpression(groupAssignments, groupColors, '#ff2d55')
+  if (groupingActive) return makeGroupColorExpression(groupColors, '#ff2d55')
+  void groupAssignments
   void surfaceOverlayEnabled
   return makeColorExpressionStatic(integralsMeta, selectedPalette)
 }
@@ -289,6 +290,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
   const mapRef = useRef(null)
   const contourWorkerRef = useRef(null)
   const lastSamplesGeoRef = useRef(null)
+  const lastGroupAssignmentsRef = useRef(groupAssignments)
   const onCameraChangeRef = useRef(onCameraChange)
   const onMarkerClickRef = useRef(onMarkerClick)
   const showSamplesRef = useRef(showSamples)
@@ -1073,9 +1075,14 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
     try {
       const map = mapRef.current
       if (!map || !integrals) return
+
+      const assignmentsChanged = lastGroupAssignmentsRef.current !== groupAssignments
+      lastGroupAssignmentsRef.current = groupAssignments
+
       // In grouping mode markers are colored by group, so avoid frequent source rewrites
-      // from cursor/integration updates that can cause visual blinking.
-      if (isGroupingActive && !contourOverlayEnabled) {
+      // from cursor/integration updates that can cause visual blinking,
+      // UNLESS group assignments actually changed.
+      if (isGroupingActive && !contourOverlayEnabled && !assignmentsChanged) {
         try { applyOverlayStyling(map) } catch (e) { void e }
         return
       }
@@ -1092,7 +1099,10 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
           const norm = (intVal !== null && integralsMeta && Number.isFinite(Number(integralsMeta.min)) && Number.isFinite(Number(integralsMeta.max)) && Number(integralsMeta.max) > Number(integralsMeta.min))
             ? Math.max(0, Math.min(1, (Number(intVal) - Number(integralsMeta.min)) / (Number(integralsMeta.max) - Number(integralsMeta.min))))
             : 0
-          return { ...f, properties: { ...f.properties, intVal, intNorm: norm } }
+          const grp = (isGroupingActive && groupAssignments && groupAssignments[id] !== undefined)
+            ? Number(groupAssignments[id])
+            : null
+          return { ...f, properties: { ...f.properties, intVal, intNorm: norm, grp } }
         })
       }
   try { src.setData(updated); lastSamplesGeoRef.current = updated } catch (e) { void e; /* ignore */ }
