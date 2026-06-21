@@ -75,6 +75,7 @@ export default function GroupingAnalysisPopup({
   return (
     <div
       onPointerDown={onPointerDown}
+      className="resizable-panel"
       style={{
         position: 'absolute',
         left: rect.left,
@@ -89,7 +90,7 @@ export default function GroupingAnalysisPopup({
         boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
         cursor: 'grab',
         userSelect: 'none',
-        overflow: 'hidden'
+        overflow: 'auto'
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: minimized ? 0 : 4 }}>

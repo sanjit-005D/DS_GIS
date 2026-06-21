@@ -1199,6 +1199,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
             <div
               ref={pcaPanelRef}
               onPointerDown={onPcaPanelPointerDown}
+              className="resizable-panel"
               style={{
                 position: 'absolute',
                 left: pcaPanelRect.left,
@@ -1211,7 +1212,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                 width: pcaPanelRect.width,
                 height: pcaPanelMinimized ? 42 : pcaPanelRect.height,
                 fontSize: 11,
-                overflow: 'hidden',
+                overflow: 'auto',
                 touchAction: 'none',
                 userSelect: 'none'
               }}
@@ -1234,8 +1235,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                       fontSize: 14,
                       lineHeight: 1,
                       padding: 0,
-                      width: 18,
-                      height: 18
+                      width: 18, height: 18
                     }}
                     title={pcaPanelMinimized ? 'Maximize panel' : 'Minimize panel'}
                   >
@@ -1244,7 +1244,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                 </div>
                 {!pcaPanelMinimized && (
                   <>
-                <div style={{ fontSize: 10, opacity: 0.75, marginBottom: 6 }}>Drag panel to move | drag any edge to resize</div>
+                <div style={{ fontSize: 10, opacity: 0.75, marginBottom: 6 }}>Drag panel to move | drag corner to resize</div>
                 {groupStats.map((g) => (
                   <div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1276,18 +1276,13 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
                 )}
                   </>
                 )}
-                {/* Resize handles: all edges and corners */}
+                {/* Resize handles: simplified using CSS resize; existing handle kept for visual guide */}
                 {!pcaPanelMinimized && (
-                  <>
-                <div className="pca-resize-handle" onPointerDown={(e) => startPcaPanelAction('resize', e, 'n')} style={{ position: 'absolute', top: -3, left: 10, right: 10, height: 6, cursor: 'ns-resize' }} />
-                <div className="pca-resize-handle" onPointerDown={(e) => startPcaPanelAction('resize', e, 's')} style={{ position: 'absolute', bottom: -3, left: 10, right: 10, height: 6, cursor: 'ns-resize' }} />
-                <div className="pca-resize-handle" onPointerDown={(e) => startPcaPanelAction('resize', e, 'e')} style={{ position: 'absolute', top: 10, right: -3, bottom: 10, width: 6, cursor: 'ew-resize' }} />
-                <div className="pca-resize-handle" onPointerDown={(e) => startPcaPanelAction('resize', e, 'w')} style={{ position: 'absolute', top: 10, left: -3, bottom: 10, width: 6, cursor: 'ew-resize' }} />
-                <div className="pca-resize-handle" onPointerDown={(e) => startPcaPanelAction('resize', e, 'nw')} style={{ position: 'absolute', top: -4, left: -4, width: 10, height: 10, cursor: 'nwse-resize' }} />
-                <div className="pca-resize-handle" onPointerDown={(e) => startPcaPanelAction('resize', e, 'ne')} style={{ position: 'absolute', top: -4, right: -4, width: 10, height: 10, cursor: 'nesw-resize' }} />
-                <div className="pca-resize-handle" onPointerDown={(e) => startPcaPanelAction('resize', e, 'sw')} style={{ position: 'absolute', bottom: -4, left: -4, width: 10, height: 10, cursor: 'nesw-resize' }} />
-                <div className="pca-resize-handle" onPointerDown={(e) => startPcaPanelAction('resize', e, 'se')} style={{ position: 'absolute', bottom: -4, right: -4, width: 10, height: 10, cursor: 'nwse-resize' }} />
-                  </>
+                  <div
+                    className="popup-resize-handle"
+                    onPointerDown={(e) => startPopupResize(e, setPcaPanelRect, pcaPanelRect, 180, 100)}
+                    style={{ position: 'absolute', right: 2, bottom: 2, width: 12, height: 12, cursor: 'nwse-resize', borderRight: '2px solid rgba(0,0,0,0.35)', borderBottom: '2px solid rgba(0,0,0,0.35)' }}
+                  />
                 )}
             </div>
           )}
@@ -2151,6 +2146,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
       {!bottomBarMinimized && layer === 'light' && (
         <div
           onPointerDown={onAvgPanelPointerDown}
+          className="resizable-panel"
           style={{
             position: 'absolute',
             left: avgPanelRect.left,
@@ -2167,7 +2163,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
             WebkitBackdropFilter: 'blur(6px)',
             cursor: 'grab',
             userSelect: 'none',
-            overflow: 'hidden'
+            overflow: 'auto'
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: avgPanelMinimized ? 0 : 4 }}>
@@ -2225,6 +2221,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
       {ENABLE_LIGHT_MAP_UPGRADES && groupingEnabled && groupAveragedTraces.length > 0 && (
         <div
           onPointerDown={onGroupAvgPopupPointerDown}
+          className="resizable-panel"
           style={{
             position: 'absolute',
             left: groupAvgPopupRect.left,
@@ -2239,7 +2236,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
             boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
             cursor: 'grab',
             userSelect: 'none',
-            overflow: 'hidden'
+            overflow: 'auto'
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: groupAvgPopupMinimized ? 0 : 4 }}>
@@ -2312,7 +2309,7 @@ export default function GlobeModal({ open, onClose, _selectedSNo, selectedTable,
               zIndex: 1400
             }}
           >
-            <div style={{ position: 'relative', background: 'rgba(255,255,255,0.97)', padding: samplePopupMinimized ? '6px 7px' : 7, borderRadius: 7, color: textColor, width: samplePopupMinimized ? Math.min(samplePopupRect.width, POPUP_MINIMIZED_WIDTH) : samplePopupRect.width, height: samplePopupMinimized ? POPUP_MINIMIZED_HEIGHT : samplePopupRect.height, minWidth: 220, border: '1px solid rgba(0,0,0,0.15)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', cursor: 'grab', userSelect: 'none', overflow: 'hidden' }}>
+            <div className="resizable-panel" style={{ position: 'relative', background: 'rgba(255,255,255,0.97)', padding: samplePopupMinimized ? '6px 7px' : 7, borderRadius: 7, color: textColor, width: samplePopupMinimized ? Math.min(samplePopupRect.width, POPUP_MINIMIZED_WIDTH) : samplePopupRect.width, height: samplePopupMinimized ? POPUP_MINIMIZED_HEIGHT : samplePopupRect.height, minWidth: 220, border: '1px solid rgba(0,0,0,0.15)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', cursor: 'grab', userSelect: 'none', overflow: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: samplePopupMinimized ? 0 : 3 }}>
                 <strong style={{ fontSize: 13 }}>Sample details (popup)</strong>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

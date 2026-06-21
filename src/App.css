@@ -426,5 +426,12 @@ td:first-child, th:first-child{width:220px;color:#213547;font-weight:600}
   border-width: 6px !important;
 }
 
+.resizable-panel {
+  resize: both;
+  overflow: auto;
+  min-width: 200px;
+  min-height: 150px;
+}
+
 
 
