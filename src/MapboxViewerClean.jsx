@@ -455,10 +455,14 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       const CONTOUR_MIN_ZOOM = 6.0
       const clampedOpacity = Math.max(0, Math.min(1, Number(overlayOpacity) || 0))
       const spreadOverlayMode = surfaceOverlayEnabled
-      const contourMode = contourOverlayEnabled && !isGroupingRenderable && currentZoom >= CONTOUR_MIN_ZOOM
+      const contourMode = contourOverlayEnabled && currentZoom >= CONTOUR_MIN_ZOOM
 
       // ... existing radiusPx calculation ...
       const radiusPx = Math.max(0.25, kmRadiusToPixels(map, Math.max(1, Number(spreadDiameterKm) || 1)))
+      // Increase radius and blur for grouping mode to create "filled contour" look
+      const finalRadius = isGroupingRenderable ? radiusPx * 1.4 : radiusPx
+      const finalBlur = isGroupingRenderable ? 0.98 : 0.92
+
       // ... heatmap and spread styling ...
       if (map.getLayer('samples-heatmap')) {
         map.setLayoutProperty('samples-heatmap', 'visibility', 'none')
@@ -480,8 +484,8 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         })
         map.setLayoutProperty('samples-spread', 'visibility', spreadOverlayMode ? 'visible' : 'none')
         map.setPaintProperty('samples-spread', 'circle-color', spreadColorExpr)
-        map.setPaintProperty('samples-spread', 'circle-radius', radiusPx)
-        map.setPaintProperty('samples-spread', 'circle-blur', 0.92)
+        map.setPaintProperty('samples-spread', 'circle-radius', finalRadius)
+        map.setPaintProperty('samples-spread', 'circle-blur', finalBlur)
         map.setPaintProperty('samples-spread', 'circle-opacity', clampedOpacity)
       }
 
@@ -489,8 +493,9 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       if (map.getLayer('contour-lines-layer')) {
         // Show generated contours as the visible fallback whenever the contour toggle is enabled.
         map.setLayoutProperty('contour-lines-layer', 'visibility', contourMode ? 'visible' : 'none')
-        map.setPaintProperty('contour-lines-layer', 'line-color', makeContourColorExpression(integralsMeta, selectedPalette))
-        map.setPaintProperty('contour-lines-layer', 'line-opacity', Math.max(0.8, Math.min(1, clampedOpacity)))
+        const contourColor = isGroupingRenderable ? '#000000' : makeContourColorExpression(integralsMeta, selectedPalette)
+        map.setPaintProperty('contour-lines-layer', 'line-color', contourColor)
+        map.setPaintProperty('contour-lines-layer', 'line-opacity', isGroupingRenderable ? 0.8 : Math.max(0.8, Math.min(1, clampedOpacity)))
         // Respect per-feature linewidth property when present; otherwise keep existing zoom-based widths
         try {
           map.setPaintProperty('contour-lines-layer', 'line-width', ['interpolate', ['linear'], ['zoom'],
@@ -620,7 +625,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
     const handleMove = () => {
       if (frameId) cancelAnimationFrame(frameId)
       frameId = requestAnimationFrame(() => {
-        if (contourOverlayEnabled && !isGroupingRenderable) {
+        if (contourOverlayEnabled) {
           updateGeneratedContours(map)
         }
         applyOverlayStyling(map)
@@ -1070,7 +1075,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
       if (!map || !integrals) return
       // In grouping mode markers are colored by group, so avoid frequent source rewrites
       // from cursor/integration updates that can cause visual blinking.
-      if (isGroupingActive) {
+      if (isGroupingActive && !contourOverlayEnabled) {
         try { applyOverlayStyling(map) } catch (e) { void e }
         return
       }
