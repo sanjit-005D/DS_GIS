@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { db, isApiAvailable, setApiAvailable } from './apiClient'
+import { db, isApiAvailable } from './apiClient'
 
 // Clean, minimal Mapbox viewer. Kept intentionally small to avoid complex nested blocks
 // that previously caused parser issues with the transform pipeline.
@@ -173,19 +173,6 @@ function makeContourColorExpression(meta, cmap = 'viridis') {
   return '#000000'
 }
 
-// build a safe 3-stop interpolate expression [min -> mid -> max] with colors blue->yellow->red
-function makeThreeStopExpression(meta) {
-  try {
-    if (!meta || meta.min === undefined || meta.max === undefined) return '#ff2d55'
-    const min = Number(meta.min)
-    const max = Number(meta.max)
-    if (!isFinite(min) || !isFinite(max) || max <= min) return '#ff2d55'
-    const mid = min + (max - min) / 2
-    // use safe builder to guarantee ascending stop inputs
-    return buildInterpolate(['coalesce', ['get', 'intVal'], min], [[min, '#2b83ba'], [mid, '#ffffbf'], [max, '#d7191c']])
-  } catch (e) { void e; return '#ff2d55' }
-}
-
 // Helper: construct an interpolate expression from an input expression and
 // an array of [value,color] pairs. Ensures values are finite, sorted and unique.
 function buildInterpolate(inputExpr, pairs) {
@@ -285,7 +272,7 @@ function kmRadiusToPixels(map, radiusKm) {
   } catch (e) { void e; return 0 }
 }
 
-export default function MapboxViewer({ className, selectedLayer = 'gibs', onCameraChange, showSamples = true, showLabels = true, selectedTable, selectedIdColumn, onMarkerClick, homeRequest = 0, integrals = null, integralsMeta = null, selectedPalette = 'viridis', useNormalized = false, surfaceOverlayEnabled = true, contourOverlayEnabled = false, spreadDiameterKm = 320, overlayOpacity = 0.45, groupingEnabled = false, groupingMethod = 'pca', groupAssignments = {}, groupColors = [] }) {
+export default function MapboxViewer({ className, selectedLayer = 'gibs', onCameraChange, showSamples = true, showLabels = true, selectedTable, selectedIdColumn, onMarkerClick, homeRequest = 0, integrals = null, integralsMeta = null, selectedPalette = 'viridis', _useNormalized = false, surfaceOverlayEnabled = true, contourOverlayEnabled = false, spreadDiameterKm = 320, overlayOpacity = 0.45, groupingEnabled = false, groupingMethod = 'pca', groupAssignments = {}, groupColors = [] }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const contourWorkerRef = useRef(null)
@@ -725,7 +712,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
             if (j && j.coordinates && Array.isArray(j.coordinates) && j.coordinates.length >= 2) {
               const [lx, ly] = j.coordinates; if (Number.isFinite(Number(lx)) && Number.isFinite(Number(ly))) return [Number(lx), Number(ly)]
             }
-          } catch (e) { void e; /* not JSON */ }
+          } catch (_e) { void _e; /* not JSON */ }
           const point = raw.match(/POINT\s*\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)/i)
           if (point) { const lx = Number(point[1]), ly = Number(point[2]); if (Number.isFinite(lx) && Number.isFinite(ly)) return [lx, ly] }
           const csv = raw.match(/^\s*(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)\s*$/)
@@ -784,25 +771,6 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
     } catch (err) { /* console.warn('Failed to load samples', err); */ }
     finally { samplesLoadInFlightRef.current = false }
   }, [selectedTable, selectedIdColumn, showSamples, integrals, integralsMeta, selectedPalette, ensureOverlayLayers, applyOverlayStyling, isGroupingRenderable, groupAssignments, groupColors, surfaceOverlayEnabled, updateGeneratedContours])
-
-  function makeThreeStopExpressionPalette(meta, cmap = 'viridis') {
-    try {
-      if (!meta || meta.min === undefined || meta.max === undefined) return '#ff2d55'
-      const min = Number(meta.min)
-      const max = Number(meta.max)
-      if (!isFinite(min) || !isFinite(max) || max <= min) return '#ff2d55'
-      const mid = min + (max - min) / 2
-      const palette = PALETTES[cmap] || PALETTES.viridis
-      // Reverse palette so low values get the first color, high values get the last color
-      const reversedPalette = [...palette].reverse()
-      const first = reversedPalette[0]
-      const middle = reversedPalette[Math.floor(reversedPalette.length / 2)]
-      const last = reversedPalette[reversedPalette.length - 1]
-      return buildInterpolate(['coalesce', ['get', 'intVal'], min], [[min, first], [mid, middle], [max, last]])
-    } catch (e) { void e; return '#ff2d55' }
-  }
-
-  
 
   // keep a ref to the latest loadSamples so handlers attached once can call the up-to-date function
   const loadSamplesRef = useRef(loadSamples)
@@ -882,8 +850,7 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
         // also handle subsequent style loads (setStyle) so sources/layers are re-added
         map.on('style.load', async () => {
           // Country labels removed - GeoJSON file not available
-          try { } catch (e) { /* console.warn('Map style.load error', e) */ }
-      try { applySharedSpaceAmbience(map) } catch (e) { void e }
+          try { applyMapBackdrop(map) } catch (_e) { void _e }
 
           try {
             const hasSamplesSource = Boolean(map.getSource && map.getSource('samples'))
@@ -892,11 +859,11 @@ export default function MapboxViewer({ className, selectedLayer = 'gibs', onCame
             try {
               if (ensureOverlayLayersRef.current) ensureOverlayLayersRef.current(map)
               if (applyOverlayStylingRef.current) applyOverlayStylingRef.current(map)
-            } catch (e) { void e }
+            } catch (_e) { void _e }
             if (map.getLayer && map.getLayer('samples-layer')) {
-              try { map.setLayoutProperty('samples-layer', 'visibility', showSamplesRef.current ? 'visible' : 'none') } catch (e) { void e; /* ignore */ }
+              try { map.setLayoutProperty('samples-layer', 'visibility', showSamplesRef.current ? 'visible' : 'none') } catch (_e) { void _e; /* ignore */ }
             }
-          } catch (e) { /* console.warn('loadSamples error on style.load', e) */ }
+          } catch (_err) { /* console.warn('loadSamples error on style.load', _err); */ }
         })
 
         map.on('move', () => {

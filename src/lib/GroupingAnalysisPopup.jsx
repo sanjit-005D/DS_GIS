@@ -69,7 +69,6 @@ export default function GroupingAnalysisPopup({
 }) {
   if (!groupRepresentation) return null
 
-  const plotWidth = Math.max(280, rect.width - 16)
   const plotHeight = Math.max(160, rect.height - 56)
 
   return (

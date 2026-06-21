@@ -3,37 +3,6 @@
  * Combines efficiency with grid smoothing and curve interpolation.
  */
 
-function haversineDistanceKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function lightInterpolate(lon, lat, samples, spreadKm) {
-  if (!samples || samples.length === 0) return 0;
-  
-  let totalWeight = 0;
-  let totalValue = 0;
-  const sigma = Number.isFinite(spreadKm) ? Math.max(0.1, spreadKm / 3) : 50;
-
-  for (let i = 0; i < samples.length; i++) {
-    const s = samples[i];
-    const distKm = haversineDistanceKm(lat, lon, s.lat, s.lon);
-    
-    if (distKm < 1e-6) return s.value;
-
-    const weight = Math.exp(-Math.pow(distKm / sigma, 2));
-    totalWeight += weight;
-    totalValue += s.value * weight;
-  }
-  
-  return totalWeight > 0 ? totalValue / totalWeight : 0;
-}
-
 function smoothGrid(grid) {
   const rows = grid.length, cols = grid[0].length;
   const smoothed = Array.from({ length: rows }, () => new Array(cols).fill(0));
