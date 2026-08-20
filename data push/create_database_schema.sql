@@ -73,7 +73,7 @@ COMMENT='Stores spectral data (wavelength and intensity arrays) for each sample'
 INSERT INTO `api_keys` 
     (`api_key`, `user_name`, `user_email`, `permissions`, `is_active`) 
 VALUES 
-    ('***REMOVED-LEAKED-API-KEY***', 'admin', 'admin@example.com', 'admin', TRUE);
+    ('REPLACE_WITH_A_NEWLY_GENERATED_SECRET', 'admin', 'admin@example.com', 'admin', TRUE);
 
 -- ============================================================================
 -- USEFUL QUERIES AND VIEWS
@@ -148,10 +148,10 @@ FROM
 -- Validate API key and check permissions
 -- SELECT key_id, user_name, permissions, is_active 
 -- FROM api_keys 
--- WHERE api_key = '***REMOVED-LEAKED-API-KEY***' AND is_active = TRUE;
+-- WHERE api_key = '<your_api_key>' AND is_active = TRUE;
 
 -- Update last_used_at timestamp when API is used
--- UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE api_key = '***REMOVED-LEAKED-API-KEY***';
+-- UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE api_key = '<your_api_key>';
 
 -- ============================================================================
 -- STATISTICS QUERIES
