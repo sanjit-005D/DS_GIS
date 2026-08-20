@@ -36,8 +36,10 @@ if (empty($api_key)) {
 }
 
 // Validate key against the 'api_keys' table
-$auth_query = "SELECT key_id FROM api_keys WHERE api_key = '$api_key' AND is_active = TRUE";
-$auth_res = $conn->query($auth_query);
+$auth_stmt = $conn->prepare("SELECT key_id FROM api_keys WHERE api_key = ? AND is_active = TRUE");
+$auth_stmt->bind_param("s", $api_key);
+$auth_stmt->execute();
+$auth_res = $auth_stmt->get_result();
 
 if ($auth_res->num_rows == 0) {
     die(json_encode(["status" => "error", "message" => "Unauthorized"]));
@@ -48,13 +50,15 @@ $sample_id = isset($_GET['s_no']) ? (int)$_GET['s_no'] : null;
 
 if ($sample_id) {
     // Fetch one specific sample with all spectral points
-    $sql = "SELECT * FROM v_complete_spectral_data WHERE s_no = $sample_id";
+    $stmt = $conn->prepare("SELECT * FROM v_complete_spectral_data WHERE s_no = ?");
+    $stmt->bind_param("i", $sample_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
 } else {
     // Fetch all samples with spectral data (changed from metadata-only query)
-    $sql = "SELECT * FROM v_complete_spectral_data ORDER BY s_no ASC";
+    $result = $conn->query("SELECT * FROM v_complete_spectral_data ORDER BY s_no ASC");
 }
 
-$result = $conn->query($sql);
 $output = [];
 
 while ($row = $result->fetch_assoc()) {
