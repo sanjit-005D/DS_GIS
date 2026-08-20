@@ -9,12 +9,19 @@ Complete solution for uploading and fetching Raman spectroscopy data to/from you
 pip install -r requirements.txt
 ```
 
-### 2. Push Data to Database
+### 2. Set Your API Key
+```powershell
+$env:EYENETBIO_API_KEY = "your-secret-key-here"   # PowerShell
+export EYENETBIO_API_KEY="your-secret-key-here"   # bash/zsh
+```
+Never hardcode the key in source files or commit it — it has admin permissions.
+
+### 3. Push Data to Database
 ```powershell
 python push_data.py
 ```
 
-### 3. Fetch Data from Database
+### 4. Fetch Data from Database
 ```powershell
 python fetch_data.py
 ```
@@ -102,7 +109,7 @@ python final_upload.py
 
 ## 🔧 API Configuration
 
-- **API Key:** `***REMOVED-LEAKED-API-KEY***` (admin permissions)
+- **API Key:** set via the `EYENETBIO_API_KEY` environment variable (admin permissions — keep this secret, never commit it)
 - **Upload URL:** `http://www.eyenetbio.com/api_upload.php`
 - **Fetch URL:** `http://www.eyenetbio.com/api_fetch.php`
 - **Authentication:** POST body (api_key parameter)
@@ -131,13 +138,14 @@ python fetch_data.py
 
 ### Fetch Specific Sample (Programmatic)
 ```python
+import os
 import requests
 import json
 
 response = requests.post(
     'http://www.eyenetbio.com/api_fetch.php',
     params={'s_no': 7},  # Olivine
-    data={'api_key': '***REMOVED-LEAKED-API-KEY***'},
+    data={'api_key': os.environ['EYENETBIO_API_KEY']},
     headers={'User-Agent': 'Mozilla/5.0'}
 )
 

@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import requests
 import json
@@ -6,7 +7,7 @@ from datetime import datetime
 
 # API Configuration
 API_URL = 'http://www.eyenetbio.com/api_upload.php'
-MY_API_KEY = '***REMOVED-LEAKED-API-KEY***'
+MY_API_KEY = os.environ['EYENETBIO_API_KEY']
 
 # Custom headers to avoid bot detection
 custom_headers = {

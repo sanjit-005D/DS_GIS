@@ -3,13 +3,14 @@ Fetch Sample from Database
 Fetches a single sample with complete spectral data by s_no or sample name
 """
 
+import os
 import requests
 import json
 from datetime import datetime
 
 # API Configuration
 API_URL = "http://www.eyenetbio.com/api_fetch.php"
-MY_API_KEY = "***REMOVED-LEAKED-API-KEY***"
+MY_API_KEY = os.environ["EYENETBIO_API_KEY"]
 
 custom_headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
